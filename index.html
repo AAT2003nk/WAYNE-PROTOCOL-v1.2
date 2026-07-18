@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#05080a">
+<title>WAYNE PROTOCOL v1.2</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<header class="hud">
+  <div class="hud-top">
+    <span class="brand">W.A.Y.N.<span id="batgirlTrigger" class="brand-e">E</span></span>
+    <span class="brand-sub">PROTOCOLO NOCTURNO</span>
+  </div>
+
+  <div class="radar-wrap">
+    <svg id="radar" viewBox="0 0 240 240" class="radar">
+      <circle cx="120" cy="120" r="110" class="radar-ring ring-outer"/>
+      <circle cx="120" cy="120" r="78" class="radar-ring"/>
+      <circle cx="120" cy="120" r="46" class="radar-ring"/>
+      <line x1="120" y1="10" x2="120" y2="230" class="radar-cross"/>
+      <line x1="10" y1="120" x2="230" y2="120" class="radar-cross"/>
+      <path id="radarArc" class="radar-arc" d=""></path>
+      <g id="batIcon" class="bat-icon" transform="translate(120,112) scale(0.34) translate(-100,-48)">
+        <polygon points="86,34 80,14 94,30"/>
+        <polygon points="114,34 120,14 106,30"/>
+        <polygon points="100,26 111,34 108,66 100,74 92,66 89,34"/>
+        <polygon points="107,40 165,18 150,40 185,50 158,58 172,74 140,62 122,70 109,58"/>
+        <polygon points="93,40 35,18 50,40 15,50 42,58 28,74 60,62 78,70 91,58"/>
+      </g>
+      <text x="120" y="128" text-anchor="middle" class="radar-pct" id="radarPct">0%</text>
+    </svg>
+    <div class="radar-caption">
+      <span class="radar-label">INTEGRIDAD DEL PROTOCOLO</span>
+      <span class="radar-day" id="dayCounter">DÍA 001</span>
+    </div>
+  </div>
+
+  <div class="status-row">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">SISTEMA EN ESPERA</span>
+    <span class="streak" id="streakText">RACHA: 0</span>
+  </div>
+
+  <div class="clock-row">
+    <span id="liveClock">00:00:00</span>
+    <span class="clock-sep">·</span>
+    <span id="liveDate">—</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- PROTOCOLOS DIARIOS -->
+  <section class="panel" id="panel-habits">
+    <div class="panel-head">
+      <h2>PROTOCOLOS DIARIOS <span class="panel-eyebrow">// HÁBITOS</span></h2>
+      <button class="icon-btn" id="addHabitBtn" title="Añadir protocolo">+</button>
+    </div>
+    <ul class="checklist" id="habitList"></ul>
+    <p class="hint">Toca × para eliminar un protocolo de tu lista (no borra tu historial).</p>
+  </section>
+
+  <!-- ANÁLISIS SEMANAL -->
+  <section class="panel" id="panel-weekly">
+    <div class="panel-head">
+      <h2>ANÁLISIS SEMANAL <span class="panel-eyebrow">// LUN – DOM</span></h2>
+      <span class="week-range" id="weekRange"></span>
+    </div>
+
+    <div class="gold-banner" id="goldBanner" hidden>
+      🏆 RACHA DORADA ACTIVA — la semana pasada superaste el 85% al menos 4 días
+    </div>
+
+    <div class="week-chart" id="weekChart"></div>
+
+    <div class="week-stats">
+      <div class="week-stat">
+        <span class="nutri-label">MEDIA SEMANAL</span>
+        <strong id="weekAverage">0%</strong>
+      </div>
+      <div class="week-stat">
+        <span class="nutri-label">DÍAS ≥ 85%</span>
+        <strong id="weekSuccessDays">0 / 7</strong>
+      </div>
+    </div>
+    <p class="hint">Cada lunes empieza una semana nueva. Si logras 4 días o más al 85%+ de tus protocolos, la semana siguiente se activa en dorado.</p>
+  </section>
+
+  <!-- ENTRENAMIENTO -->
+  <section class="panel" id="panel-training">
+    <div class="panel-head">
+      <h2>ENTRENAMIENTO <span class="panel-eyebrow">// FORJA FÍSICA</span></h2>
+      <button class="icon-btn" id="addExerciseBtn" title="Añadir ejercicio">+</button>
+    </div>
+    <div class="training-list" id="trainingList"></div>
+    <div class="training-total">
+      <span>VOLUMEN TOTAL HOY</span>
+      <strong id="trainingTotal">0</strong>
+    </div>
+    <div class="training-streak">
+      <span>RACHA DE ENTRENAMIENTO</span>
+      <strong id="trainingStreak">0 días</strong>
+    </div>
+  </section>
+
+  <!-- NUTRICIÓN -->
+  <section class="panel" id="panel-nutrition">
+    <div class="panel-head">
+      <h2>NUTRICIÓN <span class="panel-eyebrow">// COMBUSTIBLE</span></h2>
+    </div>
+
+    <div class="nutrition-grid">
+      <div class="nutri-stat">
+        <span class="nutri-label">AGUA</span>
+        <div class="water-track" id="waterTrack"></div>
+        <span class="nutri-value" id="waterValue">0 / 8 vasos</span>
+      </div>
+      <div class="nutri-stat">
+        <span class="nutri-label">COMIDAS LIMPIAS</span>
+        <div class="meal-track" id="mealTrack"></div>
+        <span class="nutri-value" id="mealValue">0 / 4</span>
+      </div>
+    </div>
+
+    <div class="profile-divider"><span>PERFIL FÍSICO</span></div>
+
+    <div class="profile-grid">
+      <label class="field">
+        <span>Peso actual (kg)</span>
+        <input type="number" id="fWeight" inputmode="decimal" min="30" max="300" step="0.1">
+      </label>
+      <label class="field">
+        <span>Peso objetivo (kg)</span>
+        <input type="number" id="fGoalWeight" inputmode="decimal" min="30" max="300" step="0.1">
+      </label>
+      <label class="field">
+        <span>Edad</span>
+        <input type="number" id="fAge" inputmode="numeric" min="10" max="100">
+      </label>
+      <label class="field">
+        <span>Altura (cm)</span>
+        <input type="number" id="fHeight" inputmode="numeric" min="120" max="230">
+      </label>
+      <label class="field">
+        <span>Sexo</span>
+        <select id="fSex">
+          <option value="m">Hombre</option>
+          <option value="f">Mujer</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Actividad</span>
+        <select id="fActivity">
+          <option value="1.2">Sedentaria</option>
+          <option value="1.375">Ligera (1-3 días/sem)</option>
+          <option value="1.55">Moderada (3-5 días/sem)</option>
+          <option value="1.725">Alta (6-7 días/sem)</option>
+          <option value="1.9">Muy alta (físico + entreno)</option>
+        </select>
+      </label>
+    </div>
+
+    <button class="btn-ghost full" id="calcKcalBtn">CALCULAR OBJETIVO CALÓRICO</button>
+
+    <div class="kcal-result" id="kcalResult" hidden>
+      <div class="kcal-box">
+        <span class="kcal-label">METABOLISMO BASAL (BMR)</span>
+        <strong id="bmrValue">—</strong>
+      </div>
+      <div class="kcal-box">
+        <span class="kcal-label">MANTENIMIENTO (TDEE)</span>
+        <strong id="tdeeValue">—</strong>
+      </div>
+      <div class="kcal-box highlight">
+        <span class="kcal-label" id="kcalGoalLabel">OBJETIVO DIARIO SUGERIDO</span>
+        <strong id="kcalGoalValue">—</strong>
+      </div>
+      <p class="kcal-note">Estimación orientativa (fórmula Mifflin-St Jeor). No sustituye el consejo de un profesional de nutrición o medicina.</p>
+    </div>
+
+    <div class="weight-progress" id="weightProgress"></div>
+
+    <div class="profile-divider"><span>ANÁLISIS VISUAL DE COMIDA</span></div>
+    <button class="btn-ghost full camera-btn" id="cameraBtn">
+      📷 ESCANEAR COMIDA CON CÁMARA
+      <span class="wip-tag">WORK IN PROGRESS</span>
+    </button>
+  </section>
+
+  <!-- BITÁCORA -->
+  <section class="panel" id="panel-log">
+    <div class="panel-head">
+      <h2>BITÁCORA DE ALFRED <span class="panel-eyebrow">// NOTAS</span></h2>
+    </div>
+    <textarea id="logNote" placeholder="Registra tu progreso, amo Bruce..."></textarea>
+    <div class="log-actions">
+      <button class="btn-ghost" id="saveNoteBtn">GUARDAR NOTA</button>
+      <span class="save-flag" id="saveFlag"></span>
+    </div>
+    <div class="log-history" id="logHistory"></div>
+  </section>
+
+  <footer class="foot">
+    <span>WAYNE ENTERPRISES // USO EXCLUSIVO</span>
+    <button class="reset-btn" id="resetBtn">REINICIAR PROTOCOLO</button>
+  </footer>
+
+</main>
+
+<template id="habitItemTpl">
+  <li class="habit-item">
+    <label>
+      <input type="checkbox">
+      <span class="habit-box"></span>
+      <span class="habit-name"></span>
+    </label>
+    <span class="habit-time"></span>
+    <button class="habit-remove">×</button>
+  </li>
+</template>
+
+<template id="exerciseItemTpl">
+  <div class="exercise-row">
+    <span class="ex-name"></span>
+    <div class="ex-controls">
+      <button class="ex-btn minus">−</button>
+      <span class="ex-count">0</span>
+      <button class="ex-btn plus">+</button>
+    </div>
+    <button class="ex-remove">×</button>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
