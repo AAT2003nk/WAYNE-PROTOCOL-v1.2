@@ -1,10 +1,10 @@
 /* ============================================================
-   WAYNE PROTOCOL v1.2 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v1.3 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
 const STORAGE_KEY = 'wayneProtocolData';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const DEFAULT_HABITS = [
   '05:00 AM — DESPERTAR',
@@ -24,13 +24,34 @@ const DEFAULT_EXERCISES = [
 
 const WATER_GOAL = 8;
 const MEAL_GOAL = 4;
-const MIN_SAFE_KCAL = 1200; // suelo de seguridad para el objetivo calórico sugerido
 const WEEK_SUCCESS_THRESHOLD = 85; // % mínimo por día para contar como "día de éxito"
 const WEEK_SUCCESS_DAYS_NEEDED = 4; // días de éxito necesarios para ganar la racha dorada
 const DAY_LABELS = ['L','M','X','J','V','S','D'];
 
+// Objetivo calórico: ratios moderados y suelos de seguridad por sexo
+// (déficit/superávit sensatos en vez de un recorte fijo agresivo)
+const DEFICIT_RATIO = 0.18;   // ~18% por debajo del mantenimiento
+const SURPLUS_RATIO = 0.12;   // ~12% por encima del mantenimiento
+const MIN_KCAL_MALE = 1600;
+const MIN_KCAL_FEMALE = 1400;
+
+const PIN_MAX_DIMENSION = 640;   // px, lado más largo tras compresión
+const PIN_JPEG_QUALITY = 0.72;
+
+/* ---------------- FECHA/HORA LOCAL (sin desfases UTC) ---------------- */
+// IMPORTANTE: usamos SIEMPRE la fecha del calendario LOCAL del dispositivo,
+// nunca toISOString() (que es UTC y desalinea el cambio de día con la
+// medianoche real del usuario).
+
+function localDateKey(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function todayKey(){
-  return new Date().toISOString().slice(0,10);
+  return localDateKey(new Date());
 }
 
 function nowStamp(){
@@ -49,6 +70,7 @@ function freshState(){
       sex: 'm', activity: '1.55'
     },
     weightHistory: [],
+    pins: [],
     days: {}
   };
 }
@@ -67,7 +89,6 @@ function loadData(){
     data = freshState();
   }
 
-  // Migración desde v1 (habits eran solo booleanos, sin habitDefs/profile)
   if(!data.habitDefs){
     const namesFromDays = new Set(DEFAULT_HABITS);
     Object.values(data.days || {}).forEach(day => {
@@ -79,10 +100,10 @@ function loadData(){
     data.profile = { weight: null, goalWeight: null, age: null, height: null, sex: 'm', activity: '1.55' };
   }
   if(!data.weightHistory) data.weightHistory = [];
+  if(!data.pins) data.pins = [];
   if(!data.days) data.days = {};
   if(!data.startDate) data.startDate = todayKey();
 
-  // Migrar formato de habits de cada día: bool -> {done, at}
   Object.values(data.days).forEach(day => {
     if(day.habits){
       Object.keys(day.habits).forEach(name => {
@@ -118,7 +139,6 @@ function ensureToday(data){
     };
     saveData(data);
   }
-  // si se añadieron protocolos nuevos después de crear el día, los incorpora
   data.habitDefs.forEach(h => {
     if(!(h in data.days[key].habits)) data.days[key].habits[h] = { done:false, at:null };
   });
@@ -127,6 +147,95 @@ function ensureToday(data){
 
 let state = loadData();
 let today = ensureToday(state);
+
+/* ============================================================
+   MODAL GENÉRICO — sustituye prompt()/confirm()/alert() nativos
+   ============================================================ */
+
+let modalResolve = null;
+
+function showModal(opts){
+  const overlay = document.getElementById('modalOverlay');
+  const titleEl = document.getElementById('modalTitle');
+  const msgEl = document.getElementById('modalMessage');
+  const wrap = document.getElementById('modalInputWrap');
+  const inputEl = document.getElementById('modalInput');
+  const cancelBtn = document.getElementById('modalCancelBtn');
+  const confirmBtn = document.getElementById('modalConfirmBtn');
+
+  titleEl.textContent = opts.title || '';
+
+  if(opts.message){
+    msgEl.textContent = opts.message;
+    msgEl.hidden = false;
+  } else {
+    msgEl.hidden = true;
+  }
+
+  if(opts.input){
+    wrap.hidden = false;
+    inputEl.value = opts.inputValue || '';
+    inputEl.placeholder = opts.placeholder || '';
+  } else {
+    wrap.hidden = true;
+  }
+
+  confirmBtn.textContent = opts.confirmText || 'ACEPTAR';
+  cancelBtn.textContent = opts.cancelText || 'CANCELAR';
+  cancelBtn.hidden = !!opts.hideCancel;
+  confirmBtn.classList.toggle('danger', !!opts.danger);
+
+  overlay.hidden = false;
+
+  if(opts.input){
+    setTimeout(() => inputEl.focus(), 50);
+  }
+
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+  });
+}
+
+function closeModal(result){
+  document.getElementById('modalOverlay').hidden = true;
+  if(modalResolve){
+    const resolve = modalResolve;
+    modalResolve = null;
+    resolve(result);
+  }
+}
+
+function setupModalSystem(){
+  const overlay = document.getElementById('modalOverlay');
+  const inputEl = document.getElementById('modalInput');
+
+  document.getElementById('modalConfirmBtn').addEventListener('click', () => {
+    const wrap = document.getElementById('modalInputWrap');
+    if(!wrap.hidden){
+      const val = inputEl.value.trim();
+      closeModal(val.length ? val : null);
+    } else {
+      closeModal(true);
+    }
+  });
+
+  document.getElementById('modalCancelBtn').addEventListener('click', () => closeModal(null));
+
+  overlay.addEventListener('click', (e) => {
+    if(e.target === overlay) closeModal(null);
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      document.getElementById('modalConfirmBtn').click();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' && !overlay.hidden) closeModal(null);
+  });
+}
 
 /* ---------------- HÁBITOS ---------------- */
 
@@ -155,8 +264,14 @@ function renderHabits(){
       updateWeekly();
     });
 
-    node.querySelector('.habit-remove').addEventListener('click', () => {
-      if(!confirm(`¿Eliminar "${name}" de tus protocolos diarios? (tu historial pasado se conserva)`)) return;
+    node.querySelector('.habit-remove').addEventListener('click', async () => {
+      const ok = await showModal({
+        title: 'Eliminar protocolo',
+        message: `¿Eliminar "${name}" de tus protocolos diarios? Tu historial pasado se conserva.`,
+        confirmText: 'ELIMINAR',
+        danger: true
+      });
+      if(!ok) return;
       state.habitDefs = state.habitDefs.filter(h => h !== name);
       saveData(state);
       renderHabits();
@@ -169,10 +284,16 @@ function renderHabits(){
   });
 }
 
-document.getElementById('addHabitBtn').addEventListener('click', () => {
-  const name = prompt('Nuevo protocolo diario (ej. LECTURA 30 MIN, GUARDIA NOCTURNA):');
-  if(name && name.trim()){
-    const clean = name.trim().toUpperCase();
+document.getElementById('addHabitBtn').addEventListener('click', async () => {
+  const name = await showModal({
+    title: 'Nuevo protocolo diario',
+    message: 'Ej. LECTURA 30 MIN, GUARDIA NOCTURNA...',
+    input: true,
+    placeholder: 'Nombre del protocolo',
+    confirmText: 'AÑADIR'
+  });
+  if(name){
+    const clean = name.toUpperCase();
     if(!state.habitDefs.includes(clean)){
       state.habitDefs.push(clean);
       today.habits[clean] = { done:false, at:null };
@@ -254,7 +375,8 @@ function tickClock(){
   const dateStr = now.toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   document.getElementById('liveDate').textContent = dateStr.toUpperCase();
 
-  // vigilancia de cambio de día: si cambió la fecha desde el último render, recarga el día actual
+  // vigilancia de cambio de día real (hora local): si la fecha local cambió,
+  // se crea el registro del nuevo día sin perder el anterior.
   const key = todayKey();
   if(!state.days[key]){
     today = ensureToday(state);
@@ -270,7 +392,7 @@ function updateStreak(){
 
   cursor.setDate(cursor.getDate() - 1);
   while(true){
-    const key = cursor.toISOString().slice(0,10);
+    const key = localDateKey(cursor);
     const day = state.days[key];
     if(!day) break;
     const vals = Object.values(day.habits || {});
@@ -290,7 +412,7 @@ function updateTrainingStreak(){
 
   cursor.setDate(cursor.getDate() - 1);
   while(true){
-    const key = cursor.toISOString().slice(0,10);
+    const key = localDateKey(cursor);
     const day = state.days[key];
     if(!day) break;
     const done = day.trainingDone !== undefined ? day.trainingDone : (day.exercises || []).some(e => e.count > 0);
@@ -303,15 +425,10 @@ function updateTrainingStreak(){
 
 /* ---------------- ANÁLISIS SEMANAL ---------------- */
 
-function toDateKey(d){
-  return d.toISOString().slice(0,10);
-}
-
-// Lunes de la semana que contiene la fecha dada
 function getMonday(date){
   const d = new Date(date);
-  const day = d.getDay(); // 0 = domingo ... 6 = sábado
-  const diff = (day === 0 ? -6 : 1 - day); // retrocede hasta el lunes
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1 - day);
   d.setDate(d.getDate() + diff);
   d.setHours(0,0,0,0);
   return d;
@@ -324,14 +441,13 @@ function habitPercentForDay(day){
   return Math.round((vals.filter(v => v.done).length / vals.length) * 100);
 }
 
-// Construye las estadísticas de la semana cuyo lunes es `mondayDate`
 function buildWeekStats(mondayDate){
   const days = [];
   let hasAnyData = false;
   for(let i=0; i<7; i++){
     const d = new Date(mondayDate);
     d.setDate(d.getDate() + i);
-    const key = toDateKey(d);
+    const key = localDateKey(d);
     const dayData = state.days[key];
     const pct = habitPercentForDay(dayData);
     if(pct !== null) hasAnyData = true;
@@ -346,7 +462,6 @@ function buildWeekStats(mondayDate){
   return { days, successDays, average, successfulWeek, hasAnyData };
 }
 
-// Cuenta semanas consecutivas exitosas justo antes de la semana actual
 function computeGoldStreakWeeks(currentMonday){
   let count = 0;
   let cursor = new Date(currentMonday);
@@ -442,10 +557,16 @@ function updateTrainingTotal(){
   document.getElementById('trainingTotal').textContent = total;
 }
 
-document.getElementById('addExerciseBtn').addEventListener('click', () => {
-  const name = prompt('Nombre del nuevo ejercicio (ej. BURPEES, CUERDA):');
-  if(name && name.trim()){
-    today.exercises.push({ name: name.trim().toUpperCase(), count: 0 });
+document.getElementById('addExerciseBtn').addEventListener('click', async () => {
+  const name = await showModal({
+    title: 'Nuevo ejercicio',
+    message: 'Ej. BURPEES, CUERDA, REMO...',
+    input: true,
+    placeholder: 'Nombre del ejercicio',
+    confirmText: 'AÑADIR'
+  });
+  if(name){
+    today.exercises.push({ name: name.toUpperCase(), count: 0 });
     saveData(state);
     renderExercises();
     updateTrainingTotal();
@@ -523,11 +644,10 @@ function renderWeightProgress(){
   el.innerHTML = `Peso inicial registrado: <strong>${first} kg</strong> · Variación: <strong>${sign}${diff.toFixed(1)} kg</strong> desde el ${hist[0].date}`;
 }
 
-function calcAndShowKcal(){
+async function calcAndShowKcal(){
   const p = readProfileForm();
   state.profile = p;
 
-  // registrar peso en el histórico solo si cambia respecto al último valor
   if(p.weight){
     const hist = state.weightHistory;
     const last = hist[hist.length - 1];
@@ -540,7 +660,12 @@ function calcAndShowKcal(){
 
   const result = document.getElementById('kcalResult');
   if(!p.weight || !p.height || !p.age){
-    alert('Completa peso, altura y edad para calcular tu objetivo calórico.');
+    await showModal({
+      title: 'Faltan datos',
+      message: 'Completa peso, altura y edad para calcular tu objetivo calórico.',
+      hideCancel: true,
+      confirmText: 'ENTENDIDO'
+    });
     return;
   }
 
@@ -556,13 +681,15 @@ function calcAndShowKcal(){
   if(p.goalWeight){
     if(p.goalWeight < p.weight - 0.5){
       goalLabel = 'OBJETIVO DIARIO SUGERIDO (DÉFICIT)';
-      goalKcal = tdee - 500;
+      goalKcal = tdee * (1 - DEFICIT_RATIO);
     } else if(p.goalWeight > p.weight + 0.5){
       goalLabel = 'OBJETIVO DIARIO SUGERIDO (SUPERÁVIT)';
-      goalKcal = tdee + 300;
+      goalKcal = tdee * (1 + SURPLUS_RATIO);
     }
   }
-  goalKcal = Math.max(MIN_SAFE_KCAL, Math.round(goalKcal));
+
+  const floor = (p.sex === 'm') ? MIN_KCAL_MALE : MIN_KCAL_FEMALE;
+  goalKcal = Math.max(floor, Math.round(goalKcal));
 
   document.getElementById('bmrValue').textContent = `${Math.round(bmr)} kcal`;
   document.getElementById('tdeeValue').textContent = `${Math.round(tdee)} kcal`;
@@ -574,7 +701,117 @@ function calcAndShowKcal(){
 document.getElementById('calcKcalBtn').addEventListener('click', calcAndShowKcal);
 
 document.getElementById('cameraBtn').addEventListener('click', () => {
-  alert('🦇 Alfred está calibrando el análisis visual de comida. Próximamente en el Wayne Protocol.');
+  showModal({
+    title: 'Próximamente',
+    message: '🦇 Alfred está calibrando el análisis visual de comida. Llegará en una próxima versión del Wayne Protocol.',
+    hideCancel: true,
+    confirmText: 'ENTENDIDO'
+  });
+});
+
+/* ---------------- SALÓN DE LA FAMA (PINS) ---------------- */
+
+function fileToCompressedDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > height && width > PIN_MAX_DIMENSION){
+          height = Math.round(height * (PIN_MAX_DIMENSION / width));
+          width = PIN_MAX_DIMENSION;
+        } else if(height >= width && height > PIN_MAX_DIMENSION){
+          width = Math.round(width * (PIN_MAX_DIMENSION / height));
+          height = PIN_MAX_DIMENSION;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', PIN_JPEG_QUALITY));
+      };
+      img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderPins(){
+  const grid = document.getElementById('pinGrid');
+  const tpl = document.getElementById('pinItemTpl');
+  grid.innerHTML = '';
+
+  if(!state.pins || state.pins.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'pin-empty';
+    empty.textContent = 'Aún no hay pins. Añade el primero con el botón +.';
+    grid.appendChild(empty);
+    return;
+  }
+
+  state.pins.forEach((pin) => {
+    const node = tpl.content.cloneNode(true);
+    const img = node.querySelector('.pin-img');
+    img.src = pin.dataUrl;
+    img.alt = pin.caption || 'Pin del Salón de la Fama';
+    node.querySelector('.pin-caption').textContent = pin.caption || pin.date;
+    node.querySelector('.pin-remove').addEventListener('click', async () => {
+      const ok = await showModal({
+        title: 'Eliminar pin',
+        message: '¿Quitar esta imagen del Salón de la Fama? No se puede deshacer.',
+        confirmText: 'ELIMINAR',
+        danger: true
+      });
+      if(!ok) return;
+      state.pins = state.pins.filter(p => p.id !== pin.id);
+      saveData(state);
+      renderPins();
+    });
+    grid.appendChild(node);
+  });
+}
+
+document.getElementById('addPinBtn').addEventListener('click', () => {
+  document.getElementById('pinFileInput').click();
+});
+
+document.getElementById('pinFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+
+  try{
+    const dataUrl = await fileToCompressedDataUrl(file);
+    const caption = await showModal({
+      title: 'Añadir pin',
+      message: 'Ponle un título a este recuerdo (opcional).',
+      input: true,
+      placeholder: 'Ej. Primera semana completa',
+      confirmText: 'GUARDAR'
+    });
+    if(caption === null){ e.target.value = ''; return; }
+
+    state.pins = state.pins || [];
+    state.pins.unshift({
+      id: Date.now().toString(36),
+      dataUrl,
+      caption: caption || '',
+      date: todayKey()
+    });
+    saveData(state);
+    renderPins();
+  }catch(err){
+    await showModal({
+      title: 'No se pudo guardar',
+      message: 'La imagen es demasiado grande o el almacenamiento local está lleno. Prueba con otra foto o elimina algún pin antiguo.',
+      hideCancel: true,
+      confirmText: 'ENTENDIDO'
+    });
+  }
+  e.target.value = '';
 });
 
 /* ---------------- BITÁCORA ---------------- */
@@ -616,16 +853,41 @@ document.getElementById('saveNoteBtn').addEventListener('click', () => {
   renderLogHistory();
 });
 
-/* ---------------- RESET ---------------- */
+/* ---------------- RESET OCULTO ---------------- */
 
-document.getElementById('resetBtn').addEventListener('click', () => {
-  if(confirm('¿Reiniciar todo el Protocolo Wayne? Esta acción borrará todos tus datos locales.')){
+function setupHiddenReset(){
+  const trigger = document.getElementById('batTriggerBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  let clicks = [];
+  const WINDOW_MS = 4000;
+  const TAPS_NEEDED = 5;
+
+  trigger.addEventListener('click', () => {
+    const now = Date.now();
+    clicks.push(now);
+    clicks = clicks.filter(t => now - t <= WINDOW_MS);
+    if(clicks.length >= TAPS_NEEDED){
+      clicks = [];
+      resetBtn.hidden = false;
+      resetBtn.scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+  });
+
+  resetBtn.addEventListener('click', async () => {
+    const ok = await showModal({
+      title: '⚠ Reiniciar Protocolo Wayne',
+      message: 'Esto borrará TODOS tus datos guardados en este dispositivo: hábitos, entrenamiento, nutrición, pins y bitácora. No se puede deshacer.',
+      confirmText: 'BORRAR TODO',
+      danger: true
+    });
+    if(!ok) return;
     localStorage.removeItem(STORAGE_KEY);
     state = loadData();
     today = ensureToday(state);
+    resetBtn.hidden = true;
     renderAll();
-  }
-});
+  });
+}
 
 /* ---------------- INIT ---------------- */
 
@@ -636,6 +898,7 @@ function renderAll(){
   renderProfileForm();
   renderWeightProgress();
   renderLogHistory();
+  renderPins();
   updateTrainingTotal();
   updateTrainingStreak();
   updateRadar();
@@ -644,6 +907,8 @@ function renderAll(){
   updateWeekly();
 }
 
+setupModalSystem();
+setupHiddenReset();
 renderAll();
 tickClock();
 setInterval(tickClock, 1000);

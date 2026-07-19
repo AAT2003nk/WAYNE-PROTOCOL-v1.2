@@ -17,6 +17,12 @@
 
 *{ box-sizing:border-box; }
 
+/* El atributo HTML `hidden` debe ganar SIEMPRE a cualquier `display` que
+   pongamos en una clase (p.ej. .modal-overlay o .kcal-result usan
+   display:flex, y sin esta regla ese display gana por ser una regla de
+   autor frente a la hoja de estilos por defecto del navegador). */
+[hidden]{ display:none !important; }
+
 html,body{
   margin:0;
   padding:0;
@@ -180,17 +186,29 @@ body{
 
 .clock-row{
   margin-top:10px;
-  font-family:var(--font-display);
-  font-size:13px;
-  letter-spacing:2px;
+  font-family:var(--font-mono);
+  font-variant-numeric:tabular-nums;
+  font-size:12px;
+  letter-spacing:1px;
   color:var(--text-dim);
   display:flex;
-  justify-content:center;
-  gap:8px;
+  flex-direction:column;
+  align-items:center;
+  gap:3px;
 }
 
-#liveClock{ color:var(--accent); }
-.clock-sep{ opacity:0.4; }
+#liveClock{
+  color:var(--accent);
+  font-size:15px;
+  min-width:8ch;
+  text-align:center;
+  display:inline-block;
+}
+.clock-sep{ display:none; }
+#liveDate{
+  display:inline-block;
+  text-align:center;
+}
 
 /* ---------- MAIN / PANELS ---------- */
 main{
@@ -396,7 +414,7 @@ main{
 
 .week-stats{
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:10px;
 }
 
@@ -559,7 +577,7 @@ main{
 /* ---------- NUTRITION ---------- */
 .nutrition-grid{
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:14px;
 }
 
@@ -617,9 +635,10 @@ main{
 
 .profile-grid{
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:10px;
   margin-bottom:14px;
+  width:100%;
 }
 
 .field{
@@ -629,9 +648,14 @@ main{
   font-size:9px;
   letter-spacing:1px;
   color:var(--text-dim);
+  min-width:0;
 }
 
 .field input, .field select{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
   background:var(--bg-panel-2);
   border:1px solid var(--line);
   color:var(--text);
@@ -639,6 +663,16 @@ main{
   font-size:13px;
   padding:8px;
   border-radius:3px;
+  appearance:none;
+  -webkit-appearance:none;
+}
+
+.field select{
+  background-image:linear-gradient(45deg, transparent 50%, var(--accent) 50%), linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+  background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+  background-size:5px 5px, 5px 5px;
+  background-repeat:no-repeat;
+  padding-right:26px;
 }
 .field input:focus, .field select:focus{
   outline:none;
@@ -910,4 +944,177 @@ body.theme-batgirl .scanlines{
     transparent 2px,
     transparent 3px
   );
+}
+
+/* ---------- SALÓN DE LA FAMA (PINS) ---------- */
+
+.pin-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:8px;
+  margin-top:12px;
+}
+
+.pin-item{
+  position:relative;
+  margin:0;
+  aspect-ratio:1;
+  border:1px solid var(--line);
+  border-radius:4px;
+  overflow:hidden;
+  background:var(--bg-panel-2);
+}
+
+.pin-img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+.pin-caption{
+  position:absolute;
+  left:0; right:0; bottom:0;
+  margin:0;
+  padding:4px 6px;
+  font-size:8px;
+  letter-spacing:0.5px;
+  color:#fff;
+  background:linear-gradient(to top, rgba(0,0,0,0.75), transparent);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.pin-remove{
+  position:absolute;
+  top:3px; right:3px;
+  width:18px; height:18px;
+  border-radius:50%;
+  border:none;
+  background:rgba(0,0,0,0.55);
+  color:#fff;
+  font-size:12px;
+  line-height:1;
+  cursor:pointer;
+}
+
+.pin-empty{
+  grid-column:1 / -1;
+  font-size:11px;
+  color:var(--text-dim);
+  text-align:center;
+  padding:20px 10px;
+  border:1px dashed var(--line);
+  border-radius:4px;
+}
+
+/* ---------- DISPARADOR OCULTO DE REINICIO ---------- */
+
+.bat-trigger{
+  background:none;
+  border:none;
+  padding:8px;
+  cursor:pointer;
+  color:#ff2d4d;
+  filter:drop-shadow(0 0 6px rgba(255,45,77,0.6));
+  opacity:0.85;
+}
+.bat-trigger:active{ opacity:1; transform:scale(0.94); }
+
+.bat-trigger-icon{
+  width:34px;
+  height:auto;
+  fill:currentColor;
+}
+
+.reset-btn{
+  animation:resetReveal 0.4s ease;
+}
+
+@keyframes resetReveal{
+  from{ opacity:0; transform:translateY(-4px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+/* ---------- MODAL GENÉRICO ---------- */
+
+.modal-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.65);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:100;
+  padding:20px;
+  backdrop-filter:blur(2px);
+}
+
+.modal-box{
+  width:100%;
+  max-width:340px;
+  background:var(--bg-panel);
+  border:1px solid var(--accent-dim);
+  border-radius:6px;
+  padding:20px;
+  box-shadow:0 0 30px rgba(0,229,199,0.15);
+  animation:modalIn 0.2s ease;
+}
+
+@keyframes modalIn{
+  from{ opacity:0; transform:scale(0.95); }
+  to{ opacity:1; transform:scale(1); }
+}
+
+.modal-title{
+  font-family:var(--font-display);
+  font-size:14px;
+  letter-spacing:1px;
+  color:var(--accent);
+  margin:0 0 10px;
+}
+
+.modal-message{
+  font-size:12px;
+  line-height:1.5;
+  color:var(--text-dim);
+  margin:0 0 14px;
+}
+
+.modal-input-wrap{ margin-bottom:16px; }
+
+.modal-input{
+  width:100%;
+  box-sizing:border-box;
+  background:var(--bg-panel-2);
+  border:1px solid var(--line);
+  color:var(--text);
+  font-family:var(--font-mono);
+  font-size:13px;
+  padding:10px;
+  border-radius:3px;
+}
+.modal-input:focus{
+  outline:none;
+  border-color:var(--accent-dim);
+}
+
+.modal-actions{
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+}
+
+.modal-actions .btn-ghost{
+  padding:8px 14px;
+  font-size:10px;
+}
+
+.modal-confirm.danger{
+  border-color:rgba(255,45,77,0.5);
+  color:#ff2d4d;
+}
+.modal-confirm.danger:active{
+  background:rgba(255,45,77,0.12);
 }

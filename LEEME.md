@@ -41,7 +41,20 @@ Puedes arrastrar la carpeta completa a [app.netlify.com/drop](https://app.netlif
 - **Racha dorada**: si en una semana consigues 4 días o más con el 85%+ de tus protocolos cumplidos, la semana **siguiente** se activa automáticamente en dorado (bordes, barras y stats cambian de color) con un banner de aviso. Si rompes la racha, la semana siguiente vuelve al color por defecto.
 - **Tema oculto de Batgirl** 🩷: toca 3 veces seguidas la "E" final de "W.A.Y.N.E" (en menos de ~1.2s) y toda la app cambia a una paleta rosa/pastel. Vuelve a tocar 3 veces para volver al modo oscuro. Tu elección se recuerda entre sesiones. Es un easter egg — no hay ninguna pista visual de que está ahí.
 
-Si ya tenías datos de versiones anteriores, todo migra solo al abrir la app.
+## Novedades y arreglos v1.3
+
+**Novedades:**
+- **Salón de la Fama**: nueva sección para subir fotos/pins motivacionales. Se comprimen automáticamente (máx. 640px, JPEG) antes de guardarse en `localStorage`, para no llenar el almacenamiento con fotos pesadas. Sobreviven a cualquier actualización de código (commit nuevo en GitHub) porque viven en el navegador del dispositivo, no en los archivos de la app.
+- **Todo el front ahora usa sus propios formularios**: se acabaron los `prompt()` / `confirm()` / `alert()` del navegador. Añadir hábitos, ejercicios, pins, confirmar borrados, avisos de la calculadora, etc. — todo pasa por un modal propio con la estética exacta de la app (y que también respeta el tema Batgirl).
+- **Botón de reinicio oculto**: el antiguo botón "REINICIAR PROTOCOLO" ha desaparecido. En su lugar hay un icono de murciélago en rojo brillante al final de la página. Tócalo 5 veces (en menos de 4 segundos) y entonces aparece el botón real de reinicio, que además pide confirmación antes de borrar nada.
+
+**Arreglos:**
+- **Bug de fecha/hora**: la app calculaba el "día actual" con hora UTC en vez de con la hora local del dispositivo, lo que podía desalinear el cambio de día respecto a la medianoche real y perder el registro de hábitos marcados tarde por la noche. Ahora todo el cálculo de fechas usa siempre el calendario local — el cambio de día ocurre exactamente a medianoche de tu zona horaria, y ningún día se pierde.
+- **Salto visual del reloj**: la hora y la fecha del header ahora usan una fuente monoespaciada con números tabulares y están apiladas en columna, así el bloque ya no cambia de tamaño ni "salta" cada segundo en pantallas de móvil.
+- **Desbordamiento en Perfil Físico**: los campos de peso objetivo, altura y actividad ya no se salen de la pantalla en móvil — los inputs y selects ahora ocupan el 100% de su columna correctamente.
+- **Déficit calórico demasiado agresivo**: antes el objetivo calórico podía quedarse siempre clavado en 1200 kcal. Ahora el déficit/superávit se calcula como un porcentaje del mantenimiento (18% déficit / 12% superávit, más sostenible) y el suelo de seguridad sube a 1600 kcal (hombres) / 1400 kcal (mujeres) en vez de 1200.
+
+Si ya tenías datos de versiones anteriores, todo migra solo al abrir la app — no se pierde nada.
 
 ## Personalizar rápido
 Todo lo editable está en `app.js`, arriba del todo:

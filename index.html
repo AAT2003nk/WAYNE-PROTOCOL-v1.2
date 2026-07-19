@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<title>WAYNE PROTOCOL v1.2</title>
+<title>WAYNE PROTOCOL v1.3</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -187,7 +187,7 @@
         <span class="kcal-label" id="kcalGoalLabel">OBJETIVO DIARIO SUGERIDO</span>
         <strong id="kcalGoalValue">—</strong>
       </div>
-      <p class="kcal-note">Estimación orientativa (fórmula Mifflin-St Jeor). No sustituye el consejo de un profesional de nutrición o medicina.</p>
+      <p class="kcal-note">Estimación orientativa (fórmula Mifflin-St Jeor, déficit/superávit moderados). Nunca baja de 1600 kcal (hombres) o 1400 kcal (mujeres) como suelo de seguridad. No sustituye el consejo de un profesional de nutrición o medicina.</p>
     </div>
 
     <div class="weight-progress" id="weightProgress"></div>
@@ -212,9 +212,29 @@
     <div class="log-history" id="logHistory"></div>
   </section>
 
+  <!-- SALÓN DE LA FAMA -->
+  <section class="panel" id="panel-pins">
+    <div class="panel-head">
+      <h2>SALÓN DE LA FAMA <span class="panel-eyebrow">// PINS</span></h2>
+      <button class="icon-btn" id="addPinBtn" title="Añadir pin">+</button>
+    </div>
+    <p class="hint">Fotos y recuerdos que te recuerdan por qué empezaste. Se guardan solo en este dispositivo.</p>
+    <div class="pin-grid" id="pinGrid"></div>
+    <input type="file" id="pinFileInput" accept="image/*" hidden>
+  </section>
+
   <footer class="foot">
     <span>WAYNE ENTERPRISES // USO EXCLUSIVO</span>
-    <button class="reset-btn" id="resetBtn">REINICIAR PROTOCOLO</button>
+    <button class="bat-trigger" id="batTriggerBtn" title=" " aria-label="icono">
+      <svg viewBox="0 0 200 120" class="bat-trigger-icon">
+        <polygon points="86,34 80,14 94,30"/>
+        <polygon points="114,34 120,14 106,30"/>
+        <polygon points="100,26 111,34 108,66 100,74 92,66 89,34"/>
+        <polygon points="107,40 165,18 150,40 185,50 158,58 172,74 140,62 122,70 109,58"/>
+        <polygon points="93,40 35,18 50,40 15,50 42,58 28,74 60,62 78,70 91,58"/>
+      </svg>
+    </button>
+    <button class="reset-btn" id="resetBtn" hidden>REINICIAR PROTOCOLO</button>
   </footer>
 
 </main>
@@ -242,6 +262,29 @@
     <button class="ex-remove">×</button>
   </div>
 </template>
+
+<template id="pinItemTpl">
+  <figure class="pin-item">
+    <img class="pin-img" src="" alt="">
+    <figcaption class="pin-caption"></figcaption>
+    <button class="pin-remove">×</button>
+  </figure>
+</template>
+
+<!-- MODAL GENÉRICO (reemplaza prompt/confirm/alert nativos) -->
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal-box" id="modalBox" role="dialog" aria-modal="true">
+    <h3 class="modal-title" id="modalTitle"></h3>
+    <p class="modal-message" id="modalMessage"></p>
+    <div class="modal-input-wrap" id="modalInputWrap" hidden>
+      <input type="text" class="modal-input" id="modalInput" maxlength="60">
+    </div>
+    <div class="modal-actions" id="modalActions">
+      <button class="btn-ghost modal-cancel" id="modalCancelBtn">CANCELAR</button>
+      <button class="btn-ghost modal-confirm" id="modalConfirmBtn">ACEPTAR</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>
