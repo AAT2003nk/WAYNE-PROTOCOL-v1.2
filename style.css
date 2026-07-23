@@ -29,8 +29,9 @@ html,body{
   background:var(--bg);
   color:var(--text);
   font-family:var(--font-mono);
-  min-height:100vh;
-  overflow-x:hidden;
+  height:100%;
+  overflow:hidden;
+  overscroll-behavior:none;
 }
 
 body{
@@ -1117,4 +1118,259 @@ body.theme-batgirl .scanlines{
 }
 .modal-confirm.danger:active{
   background:rgba(255,45,77,0.12);
+}
+
+/* ============================================================
+   ARQUITECTURA DE PANTALLAS DESLIZABLES (swipe)
+   ============================================================ */
+
+.app-viewport{
+  position:fixed;
+  inset:0;
+  overflow:hidden;
+  touch-action:pan-y;
+}
+
+.app-track{
+  display:flex;
+  width:200%;
+  height:100%;
+  transform:translateX(-50%); /* posición por defecto: pantalla principal visible */
+  transition:transform 0.4s cubic-bezier(.22,.61,.36,1);
+  will-change:transform;
+  touch-action:pan-y;
+}
+
+.app-track.dragging{
+  transition:none;
+}
+
+.screen{
+  flex:0 0 50%;
+  width:50%;
+  height:100%;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  position:relative;
+}
+
+.screen main{
+  padding-bottom:80px;
+}
+
+/* ---------- PEEK TABS (pestañas para deslizar) ---------- */
+
+.peek-tab{
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+  z-index:20;
+  width:30px;
+  height:64px;
+  border:1px solid var(--line);
+  background:var(--bg-panel);
+  color:var(--accent);
+  font-size:17px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  opacity:0.9;
+  animation:peekPulse 3.5s infinite ease-in-out;
+}
+
+@keyframes peekPulse{
+  0%,100%{ opacity:0.65; }
+  50%{ opacity:1; }
+}
+
+.peek-tab-left{
+  left:0;
+  border-radius:0 8px 8px 0;
+  border-left:none;
+}
+
+.peek-tab-right{
+  right:0;
+  border-radius:8px 0 0 8px;
+  border-right:none;
+}
+
+.swipe-hint{
+  text-align:center;
+  font-size:10px;
+  letter-spacing:1px;
+  color:var(--text-dim);
+  margin:0 0 6px;
+  opacity:0.8;
+}
+
+/* ============================================================
+   TEMA MODO DIETA (solo aplica sobre el tema Default;
+   si Batgirl está activo, #screenDiet hereda el rosa sin romperse)
+   ============================================================ */
+
+body:not(.theme-batgirl) #screenDiet{
+  --bg: #0a0503;
+  --bg-panel: #1a0f08;
+  --bg-panel-2: #20130a;
+  --line: #3a2312;
+  --accent: #ff8a3d;
+  --accent-dim: #8a4a1f;
+  --amber: #ffd27a;
+  --text: #ffe8d1;
+  --text-dim: #a9805f;
+}
+
+#screenDiet{
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(255,138,61,0.10), transparent 60%),
+    var(--bg);
+}
+
+#screenDiet .hud{
+  background:linear-gradient(to bottom, rgba(255,138,61,0.07), transparent);
+}
+
+.diet-pct-label{
+  font-size:8px;
+  letter-spacing:1px;
+  fill:var(--text-dim);
+}
+
+.diet-kcal-today{
+  color:var(--accent) !important;
+  text-shadow:0 0 8px rgba(255,138,61,0.5);
+}
+
+/* ---------- RESUMEN KCAL ---------- */
+
+.kcal-summary-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:8px;
+  margin-bottom:10px;
+}
+
+.kcal-summary-grid .kcal-box{
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:flex-start;
+  gap:4px;
+}
+
+#kcalRemainingBox.over-budget{
+  border-color:var(--danger);
+}
+#kcalRemainingBox.over-budget strong{
+  color:var(--danger);
+}
+
+/* ---------- REGISTRO DE COMIDAS ---------- */
+
+.meal-slots{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.meal-slot{
+  background:var(--bg-panel-2);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:10px 12px;
+}
+
+.meal-slot-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:6px;
+}
+
+.meal-slot-name{
+  flex:1;
+  font-family:var(--font-display);
+  font-size:12px;
+  letter-spacing:1px;
+  color:var(--text);
+}
+
+.meal-slot-kcal{
+  font-size:11px;
+  color:var(--amber);
+}
+
+.meal-add-btn{
+  width:22px;
+  height:22px;
+  font-size:14px;
+}
+
+.meal-entry-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.meal-entry{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:11px;
+  padding:5px 0;
+  border-top:1px dashed var(--line);
+}
+
+.meal-entry-name{
+  flex:1;
+  color:var(--text);
+}
+
+.meal-entry-kcal{
+  color:var(--text-dim);
+  font-size:10px;
+}
+
+.meal-entry-remove{
+  background:none;
+  border:none;
+  color:var(--text-dim);
+  font-size:14px;
+  cursor:pointer;
+  padding:0 2px;
+}
+
+.meal-slot-empty{
+  font-size:10px;
+  color:var(--text-dim);
+  padding:4px 0;
+}
+
+/* ---------- AGUA (LITROS) ---------- */
+
+.water-track-diet{
+  display:flex;
+  gap:4px;
+  margin-bottom:8px;
+}
+
+.water-track-diet span{
+  flex:1;
+  height:22px;
+  border:1px solid var(--accent-dim);
+  border-radius:2px;
+  cursor:pointer;
+}
+
+.water-track-diet span.filled{
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(255,138,61,0.5);
+}
+
+body.theme-batgirl .water-track-diet span.filled{
+  box-shadow:0 0 6px rgba(255,93,162,0.55);
 }

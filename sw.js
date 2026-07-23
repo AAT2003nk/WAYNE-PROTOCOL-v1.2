@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wayne-protocol-v5';
+const CACHE_NAME = 'wayne-protocol-v6';
 const ASSETS = [
   './',
   './index.html',

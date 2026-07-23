@@ -1,10 +1,10 @@
 /* ============================================================
-   WAYNE PROTOCOL v1.3 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v1.4 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
 const STORAGE_KEY = 'wayneProtocolData';
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const DEFAULT_HABITS = [
   '05:00 AM — DESPERTAR',
@@ -22,8 +22,9 @@ const DEFAULT_EXERCISES = [
   { name: 'PLANCHA (SEG)', count: 0 }
 ];
 
-const WATER_GOAL = 8;
-const MEAL_GOAL = 4;
+const MEAL_SLOTS = ['DESAYUNO', 'ALMUERZO', 'CENA', 'SNACKS'];
+const WATER_GOAL_ML = 2000;
+const WATER_STEP_ML = 250;
 const WEEK_SUCCESS_THRESHOLD = 85; // % mínimo por día para contar como "día de éxito"
 const WEEK_SUCCESS_DAYS_NEEDED = 4; // días de éxito necesarios para ganar la racha dorada
 const DAY_LABELS = ['L','M','X','J','V','S','D'];
@@ -115,6 +116,16 @@ function loadData(){
     if(day.trainingDone === undefined){
       day.trainingDone = (day.exercises || []).some(e => e.count > 0);
     }
+    // Migración v1.3 -> v1.4: nuevo Modo Dieta (agua en ml + registro de
+    // comidas estructurado). Se AÑADEN campos nuevos sin tocar los antiguos
+    // (day.water / day.meals se conservan tal cual, intactos, como archivo
+    // histórico) para no perder ni un dato guardado.
+    if(day.waterMl === undefined){
+      day.waterMl = typeof day.water === 'number' ? day.water * 250 : 0;
+    }
+    if(day.mealLog === undefined){
+      day.mealLog = Object.fromEntries(MEAL_SLOTS.map(s => [s, []]));
+    }
   });
 
   data.version = SCHEMA_VERSION;
@@ -132,8 +143,8 @@ function ensureToday(data){
     data.days[key] = {
       habits: Object.fromEntries(data.habitDefs.map(h => [h, { done:false, at:null }])),
       exercises: DEFAULT_EXERCISES.map(e => ({...e})),
-      water: 0,
-      meals: 0,
+      waterMl: 0,
+      mealLog: Object.fromEntries(MEAL_SLOTS.map(s => [s, []])),
       trainingDone: false,
       logs: []
     };
@@ -142,6 +153,8 @@ function ensureToday(data){
   data.habitDefs.forEach(h => {
     if(!(h in data.days[key].habits)) data.days[key].habits[h] = { done:false, at:null };
   });
+  if(data.days[key].waterMl === undefined) data.days[key].waterMl = 0;
+  if(data.days[key].mealLog === undefined) data.days[key].mealLog = Object.fromEntries(MEAL_SLOTS.map(s => [s, []]));
   return data.days[key];
 }
 
@@ -574,37 +587,151 @@ document.getElementById('addExerciseBtn').addEventListener('click', async () => 
   }
 });
 
-/* ---------------- NUTRICIÓN: AGUA / COMIDAS ---------------- */
+/* ---------------- MODO DIETA: AGUA (LITROS) ---------------- */
 
-function renderNutrition(){
-  const waterTrack = document.getElementById('waterTrack');
-  const mealTrack = document.getElementById('mealTrack');
-  waterTrack.innerHTML = '';
-  mealTrack.innerHTML = '';
+function renderWaterDiet(){
+  const track = document.getElementById('waterTrackDiet');
+  if(!track) return;
+  track.innerHTML = '';
+  const steps = Math.round(WATER_GOAL_ML / WATER_STEP_ML);
+  const filledSteps = Math.round((today.waterMl || 0) / WATER_STEP_ML);
 
-  for(let i=0; i<WATER_GOAL; i++){
+  for(let i=0; i<steps; i++){
     const span = document.createElement('span');
-    if(i < today.water) span.classList.add('filled');
+    if(i < filledSteps) span.classList.add('filled');
     span.addEventListener('click', () => {
-      today.water = (i+1 === today.water) ? i : i+1;
+      const newFilled = (i+1 === filledSteps) ? i : i+1;
+      today.waterMl = newFilled * WATER_STEP_ML;
       saveData(state);
-      renderNutrition();
+      renderWaterDiet();
     });
-    waterTrack.appendChild(span);
+    track.appendChild(span);
   }
-  document.getElementById('waterValue').textContent = `${today.water} / ${WATER_GOAL} vasos`;
 
-  for(let i=0; i<MEAL_GOAL; i++){
-    const span = document.createElement('span');
-    if(i < today.meals) span.classList.add('filled');
-    span.addEventListener('click', () => {
-      today.meals = (i+1 === today.meals) ? i : i+1;
-      saveData(state);
-      renderNutrition();
-    });
-    mealTrack.appendChild(span);
+  const liters = ((today.waterMl || 0) / 1000).toFixed(2);
+  const goalLiters = (WATER_GOAL_ML / 1000).toFixed(2);
+  document.getElementById('waterValueDiet').textContent = `${liters}L / ${goalLiters}L`;
+}
+
+/* ---------------- MODO DIETA: REGISTRO DE COMIDAS ---------------- */
+
+function mealSlotTotal(slot){
+  const entries = (today.mealLog && today.mealLog[slot]) || [];
+  return entries.reduce((sum, e) => sum + (e.kcal || 0), 0);
+}
+
+function renderMealSlots(){
+  const container = document.getElementById('mealSlots');
+  if(!container) return;
+  const slotTpl = document.getElementById('mealSlotTpl');
+  const entryTpl = document.getElementById('mealEntryTpl');
+  container.innerHTML = '';
+
+  MEAL_SLOTS.forEach(slot => {
+    const node = slotTpl.content.cloneNode(true);
+    node.querySelector('.meal-slot-name').textContent = slot;
+    const total = mealSlotTotal(slot);
+    node.querySelector('.meal-slot-kcal').textContent = total > 0 ? `${total} kcal` : '';
+    node.querySelector('.meal-add-btn').addEventListener('click', () => addMealEntry(slot));
+
+    const list = node.querySelector('.meal-entry-list');
+    const entries = (today.mealLog && today.mealLog[slot]) || [];
+    if(entries.length === 0){
+      const empty = document.createElement('li');
+      empty.className = 'meal-slot-empty';
+      empty.textContent = 'Sin registros todavía.';
+      list.appendChild(empty);
+    } else {
+      entries.forEach(entry => {
+        const eNode = entryTpl.content.cloneNode(true);
+        eNode.querySelector('.meal-entry-name').textContent = entry.name;
+        eNode.querySelector('.meal-entry-kcal').textContent = entry.kcal ? `${entry.kcal} kcal` : '—';
+        eNode.querySelector('.meal-entry-remove').addEventListener('click', () => {
+          today.mealLog[slot] = today.mealLog[slot].filter(e => e.id !== entry.id);
+          saveData(state);
+          renderMealSlots();
+          updateKcalSummary();
+        });
+        list.appendChild(eNode);
+      });
+    }
+    container.appendChild(node);
+  });
+}
+
+async function addMealEntry(slot){
+  const name = await showModal({
+    title: `Añadir a ${slot}`,
+    message: '¿Qué has comido?',
+    input: true,
+    placeholder: 'Ej. Pechuga de pollo con arroz',
+    confirmText: 'SIGUIENTE'
+  });
+  if(!name) return;
+
+  const kcalRaw = await showModal({
+    title: 'Kcal aproximadas',
+    message: 'Opcional — déjalo vacío si no lo sabes.',
+    input: true,
+    placeholder: 'Ej. 450',
+    confirmText: 'GUARDAR',
+    cancelText: 'SIN DATO'
+  });
+  const kcal = kcalRaw ? (parseInt(kcalRaw) || null) : null;
+
+  if(!today.mealLog) today.mealLog = {};
+  if(!today.mealLog[slot]) today.mealLog[slot] = [];
+  today.mealLog[slot].push({ id: Date.now().toString(36), name, kcal, at: nowStamp() });
+  saveData(state);
+  renderMealSlots();
+  updateKcalSummary();
+}
+
+/* ---------------- MODO DIETA: RESUMEN KCAL Y ANILLO ---------------- */
+
+function todayKcalConsumed(){
+  if(!today.mealLog) return 0;
+  return MEAL_SLOTS.reduce((sum, slot) => sum + mealSlotTotal(slot), 0);
+}
+
+function updateKcalSummary(){
+  const consumed = todayKcalConsumed();
+  const goal = state.profile && state.profile.kcalGoal ? state.profile.kcalGoal : null;
+
+  const consumedEl = document.getElementById('kcalConsumed');
+  const consumedBigEl = document.getElementById('kcalConsumedBig');
+  const goalMiniEl = document.getElementById('kcalGoalMini');
+  const remainingEl = document.getElementById('kcalRemaining');
+  const remainingBox = document.getElementById('kcalRemainingBox');
+  const hintEl = document.getElementById('kcalSummaryHint');
+  if(!consumedEl) return;
+
+  consumedEl.textContent = `${consumed} kcal`;
+  consumedBigEl.textContent = `${consumed} kcal`;
+
+  if(goal){
+    goalMiniEl.textContent = `${goal} kcal`;
+    const remaining = goal - consumed;
+    remainingEl.textContent = `${remaining >= 0 ? remaining : Math.abs(remaining)} kcal${remaining < 0 ? ' de más' : ''}`;
+    remainingBox.classList.toggle('over-budget', remaining < 0);
+    hintEl.hidden = true;
+  } else {
+    goalMiniEl.textContent = '— kcal';
+    remainingEl.textContent = '—';
+    remainingBox.classList.remove('over-budget');
+    hintEl.hidden = false;
   }
-  document.getElementById('mealValue').textContent = `${today.meals} / ${MEAL_GOAL}`;
+
+  const pct = goal ? Math.min(100, Math.round((consumed / goal) * 100)) : 0;
+  const radius = 88;
+  const circumference = 2 * Math.PI * radius;
+  const arc = document.getElementById('dietArc');
+  if(arc){
+    arc.setAttribute('d', describeArcPath(120,120,radius));
+    arc.setAttribute('stroke-dasharray', `${(pct/100) * circumference} ${circumference}`);
+  }
+  const pctEl = document.getElementById('dietPct');
+  if(pctEl) pctEl.textContent = pct + '%';
 }
 
 /* ---------------- NUTRICIÓN: PERFIL FÍSICO Y KCAL ---------------- */
@@ -645,7 +772,11 @@ function renderWeightProgress(){
 }
 
 async function calcAndShowKcal(){
+  const prevGoal = state.profile ? state.profile.kcalGoal : null;
+  const prevGoalLabel = state.profile ? state.profile.kcalGoalLabel : null;
   const p = readProfileForm();
+  p.kcalGoal = prevGoal;
+  p.kcalGoalLabel = prevGoalLabel;
   state.profile = p;
 
   if(p.weight){
@@ -691,11 +822,17 @@ async function calcAndShowKcal(){
   const floor = (p.sex === 'm') ? MIN_KCAL_MALE : MIN_KCAL_FEMALE;
   goalKcal = Math.max(floor, Math.round(goalKcal));
 
+  state.profile.kcalGoal = goalKcal;
+  state.profile.kcalGoalLabel = goalLabel;
+  saveData(state);
+
   document.getElementById('bmrValue').textContent = `${Math.round(bmr)} kcal`;
   document.getElementById('tdeeValue').textContent = `${Math.round(tdee)} kcal`;
   document.getElementById('kcalGoalLabel').textContent = goalLabel;
   document.getElementById('kcalGoalValue').textContent = `${goalKcal} kcal`;
   result.hidden = false;
+
+  updateKcalSummary();
 }
 
 document.getElementById('calcKcalBtn').addEventListener('click', calcAndShowKcal);
@@ -853,6 +990,96 @@ document.getElementById('saveNoteBtn').addEventListener('click', () => {
   renderLogHistory();
 });
 
+/* ---------------- SWIPE ENTRE PANTALLAS (WAYNE PROTOCOL <-> MODO DIETA) ---------------- */
+
+function setupSwipe(){
+  const viewport = document.getElementById('appViewport');
+  const track = document.getElementById('appTrack');
+  let startX = 0, startY = 0, baseX = 0;
+  let dragging = false;
+  let directionLock = null; // null | 'h' | 'v'
+  let activeScreen = 'main'; // 'main' | 'diet'
+
+  function currentBaseX(){
+    return activeScreen === 'diet' ? 0 : -window.innerWidth;
+  }
+
+  function snapTo(screenName, animate = true){
+    activeScreen = screenName;
+    const x = screenName === 'diet' ? 0 : -window.innerWidth;
+    track.classList.remove('dragging');
+    if(animate){
+      requestAnimationFrame(() => {
+        track.style.transform = `translateX(${x}px)`;
+      });
+    } else {
+      // sin animación (carga inicial o resize): aplicar de forma síncrona
+      // para que no parpadee un frame en la posición equivocada.
+      track.style.transition = 'none';
+      track.style.transform = `translateX(${x}px)`;
+      void track.offsetHeight; // fuerza reflow antes de recuperar la transición
+      track.style.transition = '';
+    }
+  }
+
+  function onPointerDown(e){
+    if(e.pointerType === 'mouse' && e.button !== 0) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    baseX = currentBaseX();
+    dragging = true;
+    directionLock = null;
+  }
+
+  function onPointerMove(e){
+    if(!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if(directionLock === null){
+      if(Math.abs(dx) > 8 || Math.abs(dy) > 8){
+        directionLock = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+        if(directionLock === 'h') track.classList.add('dragging');
+      }
+    }
+
+    if(directionLock === 'v') return; // deja que el scroll vertical nativo actúe
+
+    if(directionLock === 'h'){
+      e.preventDefault();
+      let x = baseX + dx;
+      x = Math.max(-window.innerWidth, Math.min(0, x));
+      track.style.transform = `translateX(${x}px)`;
+    }
+  }
+
+  function onPointerUp(e){
+    if(!dragging) return;
+    dragging = false;
+    if(directionLock !== 'h'){ directionLock = null; return; }
+
+    const dx = e.clientX - startX;
+    const threshold = window.innerWidth * 0.28;
+    let target = activeScreen;
+    if(activeScreen === 'main' && dx > threshold) target = 'diet';
+    else if(activeScreen === 'diet' && dx < -threshold) target = 'main';
+    snapTo(target);
+    directionLock = null;
+  }
+
+  viewport.addEventListener('pointerdown', onPointerDown);
+  viewport.addEventListener('pointermove', onPointerMove, { passive:false });
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+
+  document.getElementById('peekToDiet').addEventListener('click', () => snapTo('diet'));
+  document.getElementById('peekToMain').addEventListener('click', () => snapTo('main'));
+
+  window.addEventListener('resize', () => snapTo(activeScreen, false));
+
+  snapTo('main', false);
+}
+
 /* ---------------- RESET OCULTO ---------------- */
 
 function setupHiddenReset(){
@@ -894,7 +1121,9 @@ function setupHiddenReset(){
 function renderAll(){
   renderHabits();
   renderExercises();
-  renderNutrition();
+  renderMealSlots();
+  renderWaterDiet();
+  updateKcalSummary();
   renderProfileForm();
   renderWeightProgress();
   renderLogHistory();
@@ -909,6 +1138,7 @@ function renderAll(){
 
 setupModalSystem();
 setupHiddenReset();
+setupSwipe();
 renderAll();
 tickClock();
 setInterval(tickClock, 1000);
