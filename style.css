@@ -17,6 +17,18 @@
 
 *{ box-sizing:border-box; }
 
+/* Ocultar la barra de scroll visualmente en toda la app (rompe la inmersión
+   de "terminal táctica"), sin desactivar el scroll en sí. */
+*{
+  scrollbar-width:none;       /* Firefox */
+  -ms-overflow-style:none;    /* Edge/IE legacy */
+}
+*::-webkit-scrollbar{
+  display:none;               /* Chrome, Safari, Edge modernos */
+  width:0;
+  height:0;
+}
+
 /* El atributo HTML `hidden` debe ganar SIEMPRE a cualquier `display` que
    pongamos en una clase (p.ej. .modal-overlay o .kcal-result usan
    display:flex, y sin esta regla ese display gana por ser una regla de
@@ -1152,6 +1164,14 @@ body.theme-batgirl .scanlines{
   overflow-y:auto;
   -webkit-overflow-scrolling:touch;
   position:relative;
+  scrollbar-width:none;      /* Firefox */
+  -ms-overflow-style:none;   /* Edge/IE viejos */
+}
+
+.screen::-webkit-scrollbar{
+  display:none;              /* Chrome, Safari, navegadores basados en WebKit/Blink */
+  width:0;
+  height:0;
 }
 
 .screen main{
@@ -1220,6 +1240,26 @@ body:not(.theme-batgirl) #screenDiet{
   --amber: #ffd27a;
   --text: #ffe8d1;
   --text-dim: #a9805f;
+}
+
+/* Varios "brillos"/glow de la app están escritos con el teal fijo
+   (rgba(0,229,199,...)) en vez de con variables, así que en el Modo Dieta
+   se veían azulados encima del naranja. Aquí se sobreescriben a blanco
+   para que casen con la estética "ember" sin tocar el resto de la app. */
+body:not(.theme-batgirl) #screenDiet .brand{
+  text-shadow:0 0 12px rgba(255,255,255,0.45);
+}
+body:not(.theme-batgirl) #screenDiet .radar{
+  filter:drop-shadow(0 0 8px rgba(255,255,255,0.35));
+}
+body:not(.theme-batgirl) #screenDiet .radar-arc{
+  filter:drop-shadow(0 0 6px rgba(255,255,255,0.55));
+}
+body:not(.theme-batgirl) #screenDiet .icon-btn:active{
+  background:rgba(255,255,255,0.14);
+}
+body:not(.theme-batgirl) #screenDiet .btn-ghost:active{
+  background:rgba(255,255,255,0.14);
 }
 
 #screenDiet{
@@ -1373,4 +1413,49 @@ body:not(.theme-batgirl) #screenDiet{
 
 body.theme-batgirl .water-track-diet span.filled{
   box-shadow:0 0 6px rgba(255,93,162,0.55);
+}
+
+/* ---------- COPIA DE SEGURIDAD (discreta) ---------- */
+
+.panel-compact{
+  padding:10px 14px;
+}
+
+.panel-compact::before{
+  display:none; /* sin el detalle de acento superior, para que sea aún más discreta */
+}
+
+.backup-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.backup-label{
+  font-size:9px;
+  letter-spacing:1.5px;
+  color:var(--text-dim);
+}
+
+.backup-actions{
+  display:flex;
+  gap:8px;
+}
+
+.backup-btn{
+  background:transparent;
+  border:1px solid var(--line);
+  color:var(--text-dim);
+  font-family:var(--font-mono);
+  font-size:9px;
+  letter-spacing:1px;
+  padding:5px 10px;
+  border-radius:3px;
+  cursor:pointer;
+}
+.backup-btn:active{
+  border-color:var(--accent-dim);
+  color:var(--accent);
 }

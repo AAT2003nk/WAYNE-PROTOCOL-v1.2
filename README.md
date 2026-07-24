@@ -67,15 +67,22 @@ Puedes arrastrar la carpeta completa a [app.netlify.com/drop](https://app.netlif
 
 **Sobre tus datos guardados**: la migración es 100% aditiva. Los campos antiguos (`water`, `meals` del sistema de "vasos"/"comidas limpias") se han dejado intactos en tu histórico — no se borra nada — y simplemente ya no se usan de cara adelante. El nuevo sistema (litros exactos + registro de comidas) empieza a funcionar desde el momento en que abras esta versión, sin tocar ni un byte de lo que ya tenías guardado (hábitos, rachas, entrenamiento, bitácora, pins, análisis semanal... todo sigue igual).
 
-Si el tema Batgirl está activo, el Modo Dieta no cambia de color — simplemente hereda el rosa, tal y como pediste, para que no se rompa nada.
+## v1.5 — retoques finales
+
+- **Barra de scroll oculta**: ya no se ve la barra de desplazamiento del navegador en ninguna de las dos pantallas (funciona igual, solo que invisible), para no romper la inmersión.
+- **Destellos del Modo Dieta corregidos**: varios brillos (el del anillo de kcal, el del título "MODO DIETA", el tacto de los botones) usaban internamente el mismo teal de la app principal y se veían azulados sobre el naranja. Ahora esos brillos son blancos en el Modo Dieta, sin tocar el resto de la app ni el tema Batgirl.
+- **Copia de seguridad (Exportar/Importar)**: nueva sección discreta al final de la pantalla principal, justo antes del pie de página. "EXPORTAR" descarga un archivo `.json` con absolutamente todo (hábitos, entrenamiento, dieta, pins, bitácora, tema) con fecha en el nombre. "IMPORTAR" te deja elegir ese archivo para restaurarlo — pide confirmación primero, porque sustituye todos los datos actuales, y luego recarga la app sola. Así, si una futura actualización rompe algo, siempre tienes cómo recuperar tu progreso.
+
+Nada de esto toca el esquema de datos ni requiere migración — es 100% compatible con lo que ya tenías guardado.
 
 ## Personalizar rápido
 Todo lo editable está en `app.js`, arriba del todo:
 ```js
-const DEFAULT_HABITS = [...]      // tus hábitos
-const DEFAULT_EXERCISES = [...]   // tus ejercicios base
-const WATER_GOAL = 8               // vasos de agua objetivo
-const MEAL_GOAL = 4                 // comidas objetivo
+const DEFAULT_HABITS = [...]        // tus hábitos por defecto
+const DEFAULT_EXERCISES = [...]     // tus ejercicios base
+const MEAL_SLOTS = [...]            // franjas del registro de comidas
+const WATER_GOAL_ML = 2000          // objetivo de agua diario (ml)
+const WATER_STEP_ML = 250           // cuánto suma cada toque
 ```
 
 Gotham confía en ti. Ahora ve a hacer esas sentadillas.

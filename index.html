@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<title>WAYNE PROTOCOL v1.4</title>
+<title>WAYNE PROTOCOL v1.5</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -288,6 +288,18 @@
           <p class="hint">Fotos y recuerdos que te recuerdan por qué empezaste. Se guardan solo en este dispositivo.</p>
           <div class="pin-grid" id="pinGrid"></div>
           <input type="file" id="pinFileInput" accept="image/*" hidden>
+        </section>
+
+        <!-- COPIA DE SEGURIDAD -->
+        <section class="panel panel-compact" id="panel-backup">
+          <div class="backup-row">
+            <span class="backup-label">COPIA DE SEGURIDAD LOCAL</span>
+            <div class="backup-actions">
+              <button class="backup-btn" id="exportBtn" title="Exportar todos tus datos a un archivo">EXPORTAR</button>
+              <button class="backup-btn" id="importBtn" title="Restaurar datos desde un archivo">IMPORTAR</button>
+            </div>
+          </div>
+          <input type="file" id="importFileInput" accept="application/json,.json" hidden>
         </section>
 
         <footer class="foot">

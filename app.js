@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v1.4 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v1.5 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -1080,6 +1080,85 @@ function setupSwipe(){
   snapTo('main', false);
 }
 
+/* ---------------- COPIA DE SEGURIDAD (EXPORTAR / IMPORTAR) ---------------- */
+
+function setupBackup(){
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const bundle = {
+      app: 'wayne-protocol',
+      exportedAt: new Date().toISOString(),
+      wayneProtocolData: raw ? JSON.parse(raw) : null,
+      wayneProtocolTheme: localStorage.getItem(THEME_KEY) || 'default'
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = todayKey();
+    a.href = url;
+    a.download = `wayne-protocol-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  });
+
+  document.getElementById('importBtn').addEventListener('click', () => {
+    document.getElementById('importFileInput').click();
+  });
+
+  document.getElementById('importFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if(!file){ return; }
+
+    try{
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const payload = parsed.wayneProtocolData ? parsed.wayneProtocolData : parsed;
+
+      if(!payload || typeof payload !== 'object' || !payload.days || !payload.habitDefs){
+        await showModal({
+          title: 'Archivo no válido',
+          message: 'Este archivo no parece ser una copia de seguridad del Wayne Protocol.',
+          hideCancel: true,
+          confirmText: 'ENTENDIDO'
+        });
+        e.target.value = '';
+        return;
+      }
+
+      const ok = await showModal({
+        title: '⚠ Restaurar copia de seguridad',
+        message: 'Esto SUSTITUIRÁ todos tus datos actuales (hábitos, entrenamiento, pins, bitácora, dieta...) por los del archivo importado. No se puede deshacer.',
+        confirmText: 'RESTAURAR',
+        danger: true
+      });
+      if(!ok){ e.target.value = ''; return; }
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      if(parsed.wayneProtocolTheme){
+        localStorage.setItem(THEME_KEY, parsed.wayneProtocolTheme);
+      }
+
+      await showModal({
+        title: 'Restaurado',
+        message: 'Tus datos se han restaurado correctamente. La app se recargará ahora.',
+        hideCancel: true,
+        confirmText: 'ACEPTAR'
+      });
+      location.reload();
+    }catch(err){
+      await showModal({
+        title: 'No se pudo leer el archivo',
+        message: 'Comprueba que el archivo no esté dañado y que sea un .json exportado desde esta misma app.',
+        hideCancel: true,
+        confirmText: 'ENTENDIDO'
+      });
+    }
+    e.target.value = '';
+  });
+}
+
 /* ---------------- RESET OCULTO ---------------- */
 
 function setupHiddenReset(){
@@ -1139,6 +1218,7 @@ function renderAll(){
 setupModalSystem();
 setupHiddenReset();
 setupSwipe();
+setupBackup();
 renderAll();
 tickClock();
 setInterval(tickClock, 1000);
