@@ -75,6 +75,36 @@ Puedes arrastrar la carpeta completa a [app.netlify.com/drop](https://app.netlif
 
 Nada de esto toca el esquema de datos ni requiere migración — es 100% compatible con lo que ya tenías guardado.
 
+## v1.6 — API de alimentos, permisos, notificaciones y analítica de adherencia
+
+### 🍎 Base de datos de alimentos automática
+Al añadir algo en el registro de comidas ahora puedes elegir **"Buscar producto"** en vez de manual. Busca en **Open Food Facts** (base de datos pública y gratuita, sin clave, con muchísimos productos de supermercados españoles — Mercadona, Carrefour, Lidl, etc.). Escribes por ejemplo "tortitas de avena mercadona", eliges el resultado correcto, indicas cuántas raciones y la app calcula las kcal solas. Si no hay conexión o no hay resultados, siempre puedes seguir a mano.
+**Importante para que lo sepas**: esa búsqueda sale directamente desde tu navegador hacia los servidores de Open Food Facts — no pasa por ningún servidor de Wayne Protocol (no existe backend) ni se guarda en ningún sitio salvo tu propio `localStorage`. Necesita conexión a internet.
+
+### 🔔📷🖼️ Permisos (primera vez que abras esta versión)
+La app te preguntará, en este orden: notificaciones, cámara, y una explicación sobre la galería. Puedes decir que no a cualquiera de las dos primeras sin problema, y volver a repasarlas cuando quieras desde el nuevo botón **"PERMISOS"**, junto a Exportar/Importar.
+
+**Aviso honesto sobre la galería**: en la web no existe un permiso de "galería" separado como en apps nativas de iOS/Android. El selector de archivos (el mismo que ya usa el Salón de la Fama) no necesita ningún permiso especial — el navegador te enseña tus fotos directamente al pulsar "+". Por eso ese paso del onboarding es solo informativo, no hay ningún interruptor real que activar.
+
+### 🔔 Notificaciones de Alfred, Grayson y Bruce
+Si las activas, la app puede avisarte hasta 2 veces al día — por la mañana (8:00-11:00) y por la noche (22:00-23:59) — con un mensaje aleatorio de Alfred (recordatorio general), Dick Grayson o Bruce (ambos temática nutrición/gimnasio). Solo avisa si de verdad te falta algo por registrar ese día; si ya lo tienes todo hecho, no te molesta.
+
+**Limitación técnica que debes conocer**: Wayne Protocol es una web estática sin servidor propio (vive en GitHub Pages). Esto significa que **el aviso solo puede dispararse de forma fiable cuando abres la app** dentro de esas franjas horarias — no hay forma 100% fiable de mandarte una notificación con el móvil bloqueado y la app completamente cerrada sin un backend real detrás (eso requeriría un servidor de verdad con Web Push). He añadido, como añadido experimental, el registro a la Periodic Background Sync API de Chrome/Android (que sí puede despertar el aviso de vez en cuando incluso con la app cerrada), pero **no existe en iOS Safari ni en Firefox**, y en Android no está garantizada tampoco. Si te preocupa mucho el "se me olvida abrir la app", lo más fiable sigue siendo dejar la pestaña abierta en segundo plano o simplemente abrir la app un momento dentro de esas dos franjas.
+
+### 📅 Adherencia mensual (Modo Dieta)
+Nuevo panel tipo calendario: cada día del mes en verde (registraste algo de comida o agua) o en rojo (no registraste nada ese día). Los días futuros o anteriores a que empezaras a usar la app se ven atenuados/neutros. Puedes navegar mes a mes con las flechitas.
+
+### 🟢🔴 El Modo Dieta cambia de color según tu constancia
+- Si ayer registraste algo → el Modo Dieta se pone en **verde**.
+- Si llevas 2 días o más sin registrar nada → se pone en **rojo de alerta**.
+- Si solo te saltaste un día → se queda en el naranja normal (para no agobiarte por un solo día ajetreado).
+Esto no afecta al tema Batgirl, que sigue siempre en rosa.
+
+### ⚙️ Optimización y limpieza general
+- Se ha retirado CSS muerto que ya no se usaba desde la v1.4 (reglas antiguas de la sección de nutrición original).
+- `saveData()` ahora atrapa errores de almacenamiento lleno y avisa una sola vez por sesión en vez de romper la app en silencio.
+- El reloj ya no comprueba los recordatorios cada segundo, solo una vez por minuto, para gastar menos batería/CPU.
+
 ## Personalizar rápido
 Todo lo editable está en `app.js`, arriba del todo:
 ```js

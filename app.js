@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v1.5 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v1.6 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -134,7 +134,21 @@ function loadData(){
 }
 
 function saveData(data){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }catch(err){
+    // Almacenamiento lleno o no disponible (modo privado, cuota superada...).
+    // No rompemos la app: solo avisamos una vez por sesión para no ser pesados.
+    if(!window.__wayneStorageWarned){
+      window.__wayneStorageWarned = true;
+      showModal({
+        title: 'Almacenamiento lleno',
+        message: 'No se ha podido guardar el último cambio. Prueba a exportar tus datos y eliminar algún pin antiguo para liberar espacio.',
+        hideCancel: true,
+        confirmText: 'ENTENDIDO'
+      });
+    }
+  }
 }
 
 function ensureToday(data){
@@ -173,6 +187,7 @@ function showModal(opts){
   const msgEl = document.getElementById('modalMessage');
   const wrap = document.getElementById('modalInputWrap');
   const inputEl = document.getElementById('modalInput');
+  const listEl = document.getElementById('modalList');
   const cancelBtn = document.getElementById('modalCancelBtn');
   const confirmBtn = document.getElementById('modalConfirmBtn');
 
@@ -185,12 +200,29 @@ function showModal(opts){
     msgEl.hidden = true;
   }
 
-  if(opts.input){
-    wrap.hidden = false;
-    inputEl.value = opts.inputValue || '';
-    inputEl.placeholder = opts.placeholder || '';
-  } else {
+  listEl.innerHTML = '';
+  if(opts.list && opts.list.length){
+    listEl.hidden = false;
     wrap.hidden = true;
+    confirmBtn.hidden = true;
+    opts.list.forEach(item => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'modal-list-btn';
+      btn.innerHTML = item.label;
+      btn.addEventListener('click', () => closeModal(item.value));
+      listEl.appendChild(btn);
+    });
+  } else {
+    listEl.hidden = true;
+    confirmBtn.hidden = false;
+    if(opts.input){
+      wrap.hidden = false;
+      inputEl.value = opts.inputValue || '';
+      inputEl.placeholder = opts.placeholder || '';
+    } else {
+      wrap.hidden = true;
+    }
   }
 
   confirmBtn.textContent = opts.confirmText || 'ACEPTAR';
@@ -200,13 +232,33 @@ function showModal(opts){
 
   overlay.hidden = false;
 
-  if(opts.input){
+  if(opts.input && !opts.list){
     setTimeout(() => inputEl.focus(), 50);
   }
 
   return new Promise((resolve) => {
     modalResolve = resolve;
   });
+}
+
+// Modal de "cargando" sin botones, para esperas cortas (p.ej. llamadas a la
+// API de alimentos). No usa el sistema de promesas: se abre y se cierra a mano.
+function showLoadingModal(title, message){
+  document.getElementById('modalTitle').textContent = title || '';
+  const msgEl = document.getElementById('modalMessage');
+  msgEl.textContent = message || '';
+  msgEl.hidden = !message;
+  document.getElementById('modalList').hidden = true;
+  document.getElementById('modalInputWrap').hidden = true;
+  document.getElementById('modalActions').hidden = true;
+  document.getElementById('modalSpinner').hidden = false;
+  document.getElementById('modalOverlay').hidden = false;
+}
+
+function hideLoadingModal(){
+  document.getElementById('modalSpinner').hidden = true;
+  document.getElementById('modalActions').hidden = false;
+  document.getElementById('modalOverlay').hidden = true;
 }
 
 function closeModal(result){
@@ -394,6 +446,12 @@ function tickClock(){
   if(!state.days[key]){
     today = ensureToday(state);
     renderAll();
+  }
+
+  // Los recordatorios solo se comprueban una vez por minuto (no en cada
+  // segundo) para no malgastar ciclos de CPU sin ninguna necesidad.
+  if(now.getSeconds() === 0){
+    maybeSendReminder();
   }
 }
 
@@ -604,6 +662,8 @@ function renderWaterDiet(){
       today.waterMl = newFilled * WATER_STEP_ML;
       saveData(state);
       renderWaterDiet();
+      updateDietStatusTheme();
+      renderMonthCalendar();
     });
     track.appendChild(span);
   }
@@ -651,6 +711,8 @@ function renderMealSlots(){
           saveData(state);
           renderMealSlots();
           updateKcalSummary();
+          updateDietStatusTheme();
+          renderMonthCalendar();
         });
         list.appendChild(eNode);
       });
@@ -659,11 +721,49 @@ function renderMealSlots(){
   });
 }
 
-async function addMealEntry(slot){
+/* ---------------- BÚSQUEDA DE ALIMENTOS (Open Food Facts) ----------------
+   API pública y gratuita, sin clave, con miles de productos de supermercado
+   españoles (Mercadona, Carrefour, Lidl...). La consulta sale directamente
+   desde el navegador del usuario hacia openfoodfacts.org — Wayne Protocol
+   no guarda ni reenvía nada de esto en ningún servidor propio (no existe
+   backend). Requiere conexión a internet; si falla, se ofrece modo manual. */
+
+async function searchFoodApi(query){
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=6`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('network');
+  const data = await res.json();
+  const products = (data.products || []).filter(p =>
+    p.product_name &&
+    p.nutriments &&
+    (p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal_serving'])
+  );
+  return products.slice(0, 5).map(p => ({
+    name: p.product_name,
+    brand: p.brands ? p.brands.split(',')[0].trim() : '',
+    kcalPer100g: p.nutriments['energy-kcal_100g'] ? parseFloat(p.nutriments['energy-kcal_100g']) : null,
+    kcalPerServing: p.nutriments['energy-kcal_serving'] ? parseFloat(p.nutriments['energy-kcal_serving']) : null,
+    servingSize: p.serving_size || null
+  }));
+}
+
+function pushMealEntry(slot, name, kcal){
+  if(!today.mealLog) today.mealLog = {};
+  if(!today.mealLog[slot]) today.mealLog[slot] = [];
+  today.mealLog[slot].push({ id: Date.now().toString(36), name, kcal, at: nowStamp() });
+  saveData(state);
+  renderMealSlots();
+  updateKcalSummary();
+  updateDietStatusTheme();
+  renderMonthCalendar();
+}
+
+async function addMealEntryManual(slot, prefill){
   const name = await showModal({
     title: `Añadir a ${slot}`,
     message: '¿Qué has comido?',
     input: true,
+    inputValue: prefill || '',
     placeholder: 'Ej. Pechuga de pollo con arroz',
     confirmText: 'SIGUIENTE'
   });
@@ -678,13 +778,103 @@ async function addMealEntry(slot){
     cancelText: 'SIN DATO'
   });
   const kcal = kcalRaw ? (parseInt(kcalRaw) || null) : null;
+  pushMealEntry(slot, name, kcal);
+}
 
-  if(!today.mealLog) today.mealLog = {};
-  if(!today.mealLog[slot]) today.mealLog[slot] = [];
-  today.mealLog[slot].push({ id: Date.now().toString(36), name, kcal, at: nowStamp() });
-  saveData(state);
-  renderMealSlots();
-  updateKcalSummary();
+async function addMealEntry(slot){
+  const mode = await showModal({
+    title: `Añadir a ${slot}`,
+    message: '¿Cómo quieres registrarlo?',
+    list: [
+      { label: '🔍 Buscar producto <span class="list-btn-kcal">calcula las kcal automáticamente</span>', value: 'search' },
+      { label: '✍️ Añadir manualmente', value: 'manual' }
+    ]
+  });
+  if(!mode) return;
+
+  if(mode === 'manual'){
+    await addMealEntryManual(slot);
+    return;
+  }
+
+  const query = await showModal({
+    title: 'Buscar alimento',
+    message: 'Ej. "tortitas de avena mercadona"',
+    input: true,
+    placeholder: 'Nombre o marca del producto',
+    confirmText: 'BUSCAR'
+  });
+  if(!query) return;
+
+  showLoadingModal('Consultando Alfred...', `Buscando "${query}" en la base de datos de alimentos.`);
+  let results = [];
+  let failed = false;
+  try{
+    results = await searchFoodApi(query);
+  }catch(err){
+    failed = true;
+  }
+  hideLoadingModal();
+
+  if(failed){
+    const tryManual = await showModal({
+      title: 'Sin conexión',
+      message: 'No se pudo consultar la base de datos de alimentos (revisa tu conexión). ¿Quieres añadirlo a mano?',
+      confirmText: 'AÑADIR MANUAL',
+      cancelText: 'CANCELAR'
+    });
+    if(tryManual) await addMealEntryManual(slot, query);
+    return;
+  }
+
+  if(results.length === 0){
+    const tryManual = await showModal({
+      title: 'Sin resultados',
+      message: `No se encontraron productos para "${query}".`,
+      confirmText: 'AÑADIR MANUAL',
+      cancelText: 'CANCELAR'
+    });
+    if(tryManual) await addMealEntryManual(slot, query);
+    return;
+  }
+
+  const listOptions = results.map(r => {
+    const kcalTxt = r.kcalPerServing
+      ? `${Math.round(r.kcalPerServing)} kcal/ración${r.servingSize ? ' ('+r.servingSize+')' : ''}`
+      : `${Math.round(r.kcalPer100g)} kcal/100g`;
+    const label = `${r.name}${r.brand ? ' — ' + r.brand : ''}<span class="list-btn-kcal">${kcalTxt}</span>`;
+    return { label, value: r };
+  });
+  listOptions.push({ label: '✍️ Ninguno de estos, añadir manual', value: 'manual' });
+
+  const picked = await showModal({
+    title: 'Resultados',
+    message: `Toca el producto correcto para "${query}":`,
+    list: listOptions
+  });
+  if(!picked) return;
+  if(picked === 'manual'){ await addMealEntryManual(slot, query); return; }
+
+  const perUnit = picked.kcalPerServing || picked.kcalPer100g;
+  const unitLabel = picked.kcalPerServing
+    ? `${Math.round(picked.kcalPerServing)} kcal por ración${picked.servingSize ? ' ('+picked.servingSize+')' : ''}`
+    : `${Math.round(picked.kcalPer100g)} kcal por cada 100g`;
+
+  const servingsRaw = await showModal({
+    title: '¿Cuántas raciones?',
+    message: `${picked.name} — ${unitLabel}. Escribe cuántas raciones (o "100g") vas a tomar.`,
+    input: true,
+    inputValue: '1',
+    placeholder: 'Ej. 1, 2, 0.5',
+    confirmText: 'AÑADIR'
+  });
+  if(!servingsRaw) return;
+
+  const servings = parseFloat(servingsRaw.replace(',', '.')) || 1;
+  const totalKcal = Math.round(perUnit * servings);
+  const displayName = `${picked.name}${servings !== 1 ? ` ×${servings}` : ''}`;
+
+  pushMealEntry(slot, displayName, totalKcal);
 }
 
 /* ---------------- MODO DIETA: RESUMEN KCAL Y ANILLO ---------------- */
@@ -732,6 +922,123 @@ function updateKcalSummary(){
   }
   const pctEl = document.getElementById('dietPct');
   if(pctEl) pctEl.textContent = pct + '%';
+}
+
+/* ---------------- MODO DIETA: ADHERENCIA (calendario + estado dinámico) ----------------
+   Un día "cuenta" (verde) si tiene al menos una comida registrada o algo de
+   agua anotada. Un día pasado sin nada de eso es "fallido" (rojo). Los días
+   futuros o anteriores a que existiera la app se muestran neutros/atenuados. */
+
+function dayHasDietData(day){
+  if(!day) return false;
+  const hasMeals = day.mealLog && Object.values(day.mealLog).some(list => list && list.length > 0);
+  const hasWater = (day.waterMl || 0) > 0;
+  return !!(hasMeals || hasWater);
+}
+
+function computeDayCalStatus(key){
+  const todayStr = todayKey();
+  if(key > todayStr) return 'future';
+  if(key < state.startDate) return 'before-start';
+  const day = state.days[key];
+  const hasData = dayHasDietData(day);
+  if(key === todayStr) return hasData ? 'good' : 'pending';
+  return hasData ? 'good' : 'failed';
+}
+
+let calViewYear = null;
+let calViewMonth = null; // 0-indexado
+
+function renderMonthCalendar(){
+  const grid = document.getElementById('calGrid');
+  const label = document.getElementById('calMonthLabel');
+  if(!grid || calViewYear === null) return;
+
+  const firstOfMonth = new Date(calViewYear, calViewMonth, 1);
+  const startWeekday = (firstOfMonth.getDay() + 6) % 7; // 0 = lunes
+  const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+
+  label.textContent = firstOfMonth.toLocaleDateString('es-ES', { month:'long', year:'numeric' }).toUpperCase();
+
+  grid.innerHTML = '';
+  for(let i=0; i<startWeekday; i++){
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell cal-empty';
+    grid.appendChild(cell);
+  }
+
+  const todayStr = todayKey();
+  for(let d=1; d<=daysInMonth; d++){
+    const dateObj = new Date(calViewYear, calViewMonth, d);
+    const key = localDateKey(dateObj);
+    const status = computeDayCalStatus(key);
+    const cell = document.createElement('div');
+    cell.className = `cal-cell cal-${status}`;
+    if(key === todayStr) cell.classList.add('cal-today');
+    cell.textContent = d;
+    grid.appendChild(cell);
+  }
+
+  const realNow = new Date();
+  const isCurrentMonth = (calViewYear === realNow.getFullYear() && calViewMonth === realNow.getMonth());
+  document.getElementById('calNextBtn').disabled = isCurrentMonth;
+}
+
+function setupMonthCalendar(){
+  const now = new Date();
+  calViewYear = now.getFullYear();
+  calViewMonth = now.getMonth();
+
+  document.getElementById('calPrevBtn').addEventListener('click', () => {
+    calViewMonth--;
+    if(calViewMonth < 0){ calViewMonth = 11; calViewYear--; }
+    renderMonthCalendar();
+  });
+
+  document.getElementById('calNextBtn').addEventListener('click', () => {
+    const realNow = new Date();
+    if(calViewYear === realNow.getFullYear() && calViewMonth === realNow.getMonth()) return;
+    calViewMonth++;
+    if(calViewMonth > 11){ calViewMonth = 0; calViewYear++; }
+    renderMonthCalendar();
+  });
+
+  renderMonthCalendar();
+}
+
+// Estado reciente de adherencia: cuenta días fallidos consecutivos hacia
+// atrás (sin contar hoy, que aún está en curso). 0 fallos = verde (buena
+// racha), 1 fallo = neutro (aviso suave, sin alarmar por un solo día
+// ajetreado), 2 o más = rojo de alerta.
+function computeDietAdherenceStatus(){
+  let missed = 0;
+  let cursor = new Date();
+  cursor.setDate(cursor.getDate() - 1);
+  let checkedAny = false;
+
+  while(true){
+    const key = localDateKey(cursor);
+    if(key < state.startDate) break;
+    checkedAny = true;
+    const day = state.days[key];
+    if(dayHasDietData(day)) break;
+    missed++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  if(!checkedAny) return 'neutral';
+  if(missed >= 2) return 'alert';
+  if(missed === 0) return 'good';
+  return 'neutral';
+}
+
+function updateDietStatusTheme(){
+  const screen = document.getElementById('screenDiet');
+  if(!screen) return;
+  const status = computeDietAdherenceStatus();
+  screen.classList.remove('status-good', 'status-alert');
+  if(status === 'good') screen.classList.add('status-good');
+  else if(status === 'alert') screen.classList.add('status-alert');
 }
 
 /* ---------------- NUTRICIÓN: PERFIL FÍSICO Y KCAL ---------------- */
@@ -1083,6 +1390,8 @@ function setupSwipe(){
 /* ---------------- COPIA DE SEGURIDAD (EXPORTAR / IMPORTAR) ---------------- */
 
 function setupBackup(){
+  document.getElementById('permissionsBtn').addEventListener('click', openPermissionsMenu);
+
   document.getElementById('exportBtn').addEventListener('click', () => {
     const raw = localStorage.getItem(STORAGE_KEY);
     const bundle = {
@@ -1159,6 +1468,203 @@ function setupBackup(){
   });
 }
 
+/* ---------------- PERMISOS: NOTIFICACIONES, CÁMARA Y GALERÍA ----------------
+   En la web no existe un permiso de "galería" independiente: el selector de
+   archivos (el mismo que ya usa el Salón de la Fama) no requiere ningún
+   permiso especial, el navegador lo gestiona solo. Por honestidad se lo
+   explicamos así al usuario en vez de simular un permiso que no existe. */
+
+async function requestNotificationPermission(explain){
+  if(!('Notification' in window)){
+    if(explain){
+      await showModal({
+        title: '🔔 Notificaciones',
+        message: 'Este navegador no soporta notificaciones. Alfred no podrá avisarte por aquí.',
+        hideCancel: true, confirmText: 'ENTENDIDO'
+      });
+    }
+    return;
+  }
+
+  if(Notification.permission === 'granted'){
+    if(explain){
+      await showModal({
+        title: '🔔 Notificaciones activas',
+        message: 'Ya están activadas. Alfred, Dick Grayson y Bruce te avisarán como mucho dos veces al día (mañana y noche) si se te olvida registrar algo.',
+        hideCancel: true, confirmText: 'PERFECTO'
+      });
+    }
+    registerPeriodicSyncBestEffort();
+    return;
+  }
+
+  if(Notification.permission === 'denied'){
+    if(explain){
+      await showModal({
+        title: '🔔 Notificaciones bloqueadas',
+        message: 'Las tienes bloqueadas a nivel de navegador. Si cambias de opinión, actívalas desde los ajustes del propio sitio (icono de candado en la barra de direcciones).',
+        hideCancel: true, confirmText: 'ENTENDIDO'
+      });
+    }
+    return;
+  }
+
+  const wantsIt = await showModal({
+    title: '🔔 Notificaciones',
+    message: 'Alfred, Dick Grayson y Bruce quieren mandarte como mucho 2 avisos al día (uno por la mañana, otro sobre las 23:00) solo si se te olvida registrar algo. Nada invasivo. ¿Los activamos?',
+    confirmText: 'ACTIVAR',
+    cancelText: 'AHORA NO'
+  });
+  if(!wantsIt) return;
+
+  try{
+    const result = await Notification.requestPermission();
+    if(result === 'granted') registerPeriodicSyncBestEffort();
+  }catch(err){ /* el usuario cerró el diálogo nativo del navegador; no pasa nada */ }
+}
+
+async function requestCameraPermission(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    return;
+  }
+  const wantsIt = await showModal({
+    title: '📷 Cámara',
+    message: 'Cuando el escáner de comida esté listo hará falta tu cámara. ¿Damos el permiso ya para tenerlo preparado? Puedes decir que no ahora y te lo pediremos más adelante.',
+    confirmText: 'PERMITIR',
+    cancelText: 'AHORA NO'
+  });
+  if(!wantsIt) return;
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    stream.getTracks().forEach(t => t.stop());
+    await showModal({
+      title: '📷 Cámara lista',
+      message: 'Permiso concedido. En cuanto el escáner de comida esté terminado, ya podrá usar tu cámara sin pedirte nada de nuevo.',
+      hideCancel: true, confirmText: 'GENIAL'
+    });
+  }catch(err){
+    // el usuario denegó o no hay cámara disponible; no insistimos
+  }
+}
+
+async function explainGalleryAccess(){
+  await showModal({
+    title: '🖼️ Galería',
+    message: 'En un navegador web no existe un permiso de "galería" aparte: al pulsar "+" en el Salón de la Fama, el propio sistema te enseña tu carpeta de fotos sin pedir nada extra. Aquí no hay nada que activar.',
+    hideCancel: true, confirmText: 'ENTENDIDO'
+  });
+}
+
+async function runOnboarding(){
+  if(localStorage.getItem('wayneOnboardingDone')) return;
+  await requestNotificationPermission(false);
+  await requestCameraPermission();
+  await explainGalleryAccess();
+  localStorage.setItem('wayneOnboardingDone', '1');
+}
+
+async function openPermissionsMenu(){
+  const choice = await showModal({
+    title: 'Permisos de la app',
+    message: '¿Qué quieres revisar?',
+    list: [
+      { label: '🔔 Notificaciones', value: 'notif' },
+      { label: '📷 Cámara', value: 'camera' },
+      { label: '🖼️ Galería (info)', value: 'gallery' }
+    ]
+  });
+  if(!choice) return;
+  if(choice === 'notif') await requestNotificationPermission(true);
+  else if(choice === 'camera') await requestCameraPermission();
+  else if(choice === 'gallery') await explainGalleryAccess();
+}
+
+// Best-effort: la Periodic Background Sync API solo existe en Chrome/Android
+// (PWA instalada + cierto nivel de uso) y NUNCA en iOS Safari. Cuando no está
+// disponible, esto simplemente no hace nada — el aviso fiable sigue siendo
+// el que se comprueba cada vez que se abre la app (ver maybeSendReminder).
+async function registerPeriodicSyncBestEffort(){
+  try{
+    if(!('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.ready;
+    if(!('periodicSync' in reg)) return;
+    const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+    if(status.state === 'granted'){
+      await reg.periodicSync.register('wayne-reminder-check', { minInterval: 12 * 60 * 60 * 1000 });
+    }
+  }catch(err){
+    // sin soporte: nada que hacer, es un extra opcional
+  }
+}
+
+/* ---------------- RECORDATORIOS: MENSAJES DE ALFRED / GRAYSON / BRUCE ---------------- */
+
+const ALFRED_MESSAGES = [
+  'Amo Bruce, el registro de hoy sigue en blanco. Gotham puede esperar cinco minutos; sus protocolos, no tanto.',
+  'Los protocolos de hoy siguen sin marcar. No voy a insistir más de la cuenta, señor... pero tomo nota.',
+  'Un caballero disciplinado también anota su jornada. Se lo recuerdo con cariño.'
+];
+const GRAYSON_MESSAGES = [
+  '¡Eh, jefe! ¿Ya registraste algo hoy? No hace falta ser perfecto, solo constante.',
+  '¿Comiste bien o solo café y adrenalina otra vez? Anótalo en el Wayne Protocol.',
+  '¿Entrenaste hoy o solo lo pensaste? Déjalo por escrito, que luego se te olvida.'
+];
+const BRUCE_MESSAGES = [
+  'La disciplina no descansa. Registra tu comida y tu entrenamiento de hoy.',
+  'Cada dato cuenta. Un minuto ahora te ahorra dudas mañana.',
+  'No hace falta un día perfecto, solo un día registrado.'
+];
+
+function pickRandomNotification(){
+  const pools = [
+    { sender: 'Alfred', messages: ALFRED_MESSAGES },
+    { sender: 'Dick Grayson', messages: GRAYSON_MESSAGES },
+    { sender: 'Bruce Wayne', messages: BRUCE_MESSAGES }
+  ];
+  const pool = pools[Math.floor(Math.random() * pools.length)];
+  const msg = pool.messages[Math.floor(Math.random() * pool.messages.length)];
+  return { title: pool.sender, body: msg };
+}
+
+// Ventanas horarias suaves y no invasivas: mañana (8:00-11:00) y un rato
+// antes de medianoche (22:00-23:59). Como mucho un aviso por ventana y día.
+function currentReminderSlot(){
+  const h = new Date().getHours();
+  if(h >= 8 && h < 11) return 'morning';
+  if(h >= 22 && h < 24) return 'night';
+  return null;
+}
+
+async function maybeSendReminder(){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const slot = currentReminderSlot();
+  if(!slot) return;
+
+  const flagKey = `wayneNotif:${slot}:${todayKey()}`;
+  if(localStorage.getItem(flagKey)) return;
+
+  // Si ya está todo registrado hoy, no molestamos — solo marcamos la
+  // ventana como "vista" para no volver a comprobarlo cada minuto.
+  const habitsDone = habitPercent() === 100;
+  const dietLogged = dayHasDietData(today);
+  if(habitsDone && dietLogged){
+    localStorage.setItem(flagKey, '1');
+    return;
+  }
+
+  const { title, body } = pickRandomNotification();
+  try{
+    if('serviceWorker' in navigator){
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, { body, icon: 'icon.svg', badge: 'icon.svg', tag: 'wayne-reminder' });
+    } else {
+      new Notification(title, { body, icon: 'icon.svg' });
+    }
+    localStorage.setItem(flagKey, '1');
+  }catch(err){ /* silencioso: si falla el envío, se reintentará el siguiente minuto */ }
+}
+
 /* ---------------- RESET OCULTO ---------------- */
 
 function setupHiddenReset(){
@@ -1203,6 +1709,8 @@ function renderAll(){
   renderMealSlots();
   renderWaterDiet();
   updateKcalSummary();
+  updateDietStatusTheme();
+  renderMonthCalendar();
   renderProfileForm();
   renderWeightProgress();
   renderLogHistory();
@@ -1219,9 +1727,12 @@ setupModalSystem();
 setupHiddenReset();
 setupSwipe();
 setupBackup();
+setupMonthCalendar();
 renderAll();
 tickClock();
+maybeSendReminder();
 setInterval(tickClock, 1000);
+setTimeout(runOnboarding, 800);
 
 /* ---------------- TEMA OCULTO: BATGIRL ---------------- */
 
