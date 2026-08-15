@@ -133,6 +133,16 @@ El mismo calendario mensual verde/rojo que ya tenía Dieta ahora existe también
 ### ↩️ Deshacer en cualquier borrado (5 segundos)
 Al eliminar un hábito, un ejercicio, una entrada de comida o un pin, aparece un aviso abajo con botón "DESHACER" durante 5 segundos antes de que el borrado se guarde de verdad. Sustituye a los antiguos diálogos de confirmación — más rápido y menos intrusivo, con red de seguridad igualmente.
 
+## v1.8 — tema oculto ELITE (Dark Minimalist Gamified)
+
+Segundo tema oculto, igual de discreto que Batgirl: toca 3 veces seguidas (en menos de 1.2s) la **"Y"** de "W.A.Y.N.E" y toda la app cambia a una estética completamente distinta — violeta neón (#8B5CF6) y cian (#06B6D4) sobre negro OLED (#0A0B0E), tarjetas muy redondeadas (20-28px), tipografía Plus Jakarta Sans, anillos de progreso con gradiente violeta→cian, botones con microinteracción de "press scale" y brillo CTA. Se acaban las líneas de cruce y aros decorativos del radar táctico — se queda solo el aro principal, limpio, estilo reloj deportivo premium.
+
+Vuelve a tocar 3 veces la "Y" para volver al tema por defecto. Igual que Batgirl, tu elección se recuerda entre sesiones y no hay ninguna pista visual de que existe.
+
+**Solo uno de los dos temas ocultos puede estar activo a la vez** — activar Elite mientras Batgirl está puesto lo sustituye, y viceversa (cada uno se activa desde su propia letra).
+
+El indicador dinámico verde/rojo de adherencia del Modo Dieta (el que cambia de color según lleves bien o mal la dieta) **sigue funcionando igual bajo el tema Elite** — de hecho encaja perfectamente con el espíritu "gamificado" del tema.
+
 ## Personalizar rápido
 Todo lo editable está en `app.js`, arriba del todo:
 ```js
