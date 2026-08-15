@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v1.7 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v1.8 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -2209,12 +2209,13 @@ maybeSendReminder();
 setInterval(tickClock, 1000);
 setTimeout(runOnboarding, 800);
 
-/* ---------------- TEMA OCULTO: BATGIRL ---------------- */
+/* ---------------- TEMAS OCULTOS: BATGIRL Y ELITE ---------------- */
 
 const THEME_KEY = 'wayneProtocolTheme';
 
 function applyTheme(theme){
   document.body.classList.toggle('theme-batgirl', theme === 'batgirl');
+  document.body.classList.toggle('theme-elite', theme === 'elite');
 }
 
 (function initTheme(){
@@ -2222,8 +2223,11 @@ function applyTheme(theme){
   applyTheme(saved);
 })();
 
-(function setupBatgirlTrigger(){
-  const trigger = document.getElementById('batgirlTrigger');
+// Patrón genérico: tocar 3 veces (en menos de 1.2s) una letra concreta de
+// "W.A.Y.N.E" alterna entre el tema por defecto y el tema oculto asociado.
+// Si estaba activo el OTRO tema oculto, este lo sustituye (solo uno a la vez).
+function setupHiddenThemeTrigger(elementId, themeName){
+  const trigger = document.getElementById(elementId);
   if(!trigger) return;
   let clicks = [];
   const WINDOW_MS = 1200;
@@ -2235,12 +2239,15 @@ function applyTheme(theme){
     if(clicks.length >= 3){
       clicks = [];
       const current = localStorage.getItem(THEME_KEY) || 'default';
-      const next = current === 'batgirl' ? 'default' : 'batgirl';
+      const next = current === themeName ? 'default' : themeName;
       localStorage.setItem(THEME_KEY, next);
       applyTheme(next);
     }
   });
-})();
+}
+
+setupHiddenThemeTrigger('batgirlTrigger', 'batgirl');
+setupHiddenThemeTrigger('eliteTrigger', 'elite');
 
 /* ---------------- SERVICE WORKER (PWA offline) ---------------- */
 if('serviceWorker' in navigator){

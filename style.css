@@ -1204,7 +1204,7 @@ body.theme-batgirl .scanlines{
    si Batgirl está activo, #screenDiet hereda el rosa sin romperse)
    ============================================================ */
 
-body:not(.theme-batgirl) #screenDiet{
+body:not(.theme-batgirl):not(.theme-elite) #screenDiet{
   --bg: #0a0503;
   --bg-panel: #1a0f08;
   --bg-panel-2: #20130a;
@@ -1220,19 +1220,19 @@ body:not(.theme-batgirl) #screenDiet{
    (rgba(0,229,199,...)) en vez de con variables, así que en el Modo Dieta
    se veían azulados encima del naranja. Aquí se sobreescriben a blanco
    para que casen con la estética "ember" sin tocar el resto de la app. */
-body:not(.theme-batgirl) #screenDiet .brand{
+body:not(.theme-batgirl):not(.theme-elite) #screenDiet .brand{
   text-shadow:0 0 12px rgba(255,255,255,0.45);
 }
-body:not(.theme-batgirl) #screenDiet .radar{
+body:not(.theme-batgirl):not(.theme-elite) #screenDiet .radar{
   filter:drop-shadow(0 0 8px rgba(255,255,255,0.35));
 }
-body:not(.theme-batgirl) #screenDiet .radar-arc{
+body:not(.theme-batgirl):not(.theme-elite) #screenDiet .radar-arc{
   filter:drop-shadow(0 0 6px rgba(255,255,255,0.55));
 }
-body:not(.theme-batgirl) #screenDiet .icon-btn:active{
+body:not(.theme-batgirl):not(.theme-elite) #screenDiet .icon-btn:active{
   background:rgba(255,255,255,0.14);
 }
-body:not(.theme-batgirl) #screenDiet .btn-ghost:active{
+body:not(.theme-batgirl):not(.theme-elite) #screenDiet .btn-ghost:active{
   background:rgba(255,255,255,0.14);
 }
 
@@ -1810,4 +1810,239 @@ body:not(.theme-batgirl) #screenDiet.status-alert{
   text-align:center;
   padding:6px 10px;
   padding-top:calc(6px + env(safe-area-inset-top));
+}
+
+/* ============================================================
+   TEMA OCULTO — ELITE (Dark Minimalist Gamified)
+   Se activa con triple toque en la "Y" de W.A.Y.N.E.
+   Paleta: violeta neón + cian, fondo OLED, tarjetas muy redondeadas,
+   tipografía Plus Jakarta Sans, microinteracciones de "press scale".
+   ============================================================ */
+
+body.theme-elite{
+  --bg: #0A0B0E;
+  --bg-panel: #12141A;
+  --bg-panel-2: #171922;
+  --line: rgba(255,255,255,0.06);
+  --accent: #8B5CF6;
+  --accent-dim: #4C2F94;
+  --amber: #06B6D4;
+  --text: #F3F4F6;
+  --text-dim: #6B7280;
+  --danger: #F43F5E;
+  --font-display: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'Plus Jakarta Sans', sans-serif;
+}
+
+body.theme-elite{
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(139,92,246,0.12), transparent 60%),
+    var(--bg);
+  letter-spacing:0;
+}
+
+/* Fuera el HUD táctico: sin scanlines ni viñeta pesada — estética limpia */
+body.theme-elite .scanlines{ display:none; }
+body.theme-elite .vignette{ box-shadow: inset 0 0 100px rgba(0,0,0,0.35); }
+
+body.theme-elite .hud{
+  background:linear-gradient(to bottom, rgba(139,92,246,0.08), transparent);
+}
+
+body.theme-elite .brand{
+  font-weight:800;
+  letter-spacing:2px;
+  text-shadow:0 0 18px rgba(139,92,246,0.5);
+}
+
+body.theme-elite .brand-sub{
+  letter-spacing:3px;
+  font-weight:500;
+}
+
+/* Anillos: se queda solo el aro principal, fuera cruces y aros decorativos
+   sobrantes, para un look tipo "Apple Watch" limpio y premium */
+body.theme-elite .radar-cross{ display:none; }
+body.theme-elite .radar-ring.ring-outer{ opacity:0; }
+body.theme-elite .radar{
+  filter:drop-shadow(0 0 20px rgba(139,92,246,0.35));
+}
+body.theme-elite .radar-arc{
+  stroke-width:9;
+  stroke-linecap:round;
+  filter:drop-shadow(0 0 10px rgba(139,92,246,0.85));
+}
+body.theme-elite #radarArc{ stroke:url(#eliteArcGradientMain); }
+body.theme-elite #dietArc{ stroke:url(#eliteArcGradientDiet); }
+
+body.theme-elite .radar-pct{
+  font-weight:800;
+  font-size:26px;
+}
+
+body.theme-elite .radar-day,
+body.theme-elite .diet-kcal-today{
+  color:var(--amber) !important;
+  text-shadow:0 0 10px rgba(6,182,212,0.5);
+  font-weight:700;
+}
+
+body.theme-elite .bat-icon{
+  opacity:0.5;
+}
+
+/* Tarjetas: esquinas muy redondeadas, borde mínimo, sombra suave */
+body.theme-elite .panel,
+body.theme-elite .modal-box,
+body.theme-elite .habit-item label,
+body.theme-elite .exercise-row,
+body.theme-elite .log-entry,
+body.theme-elite .pin-item,
+body.theme-elite .meal-slot,
+body.theme-elite .kcal-box,
+body.theme-elite .week-stat,
+body.theme-elite .macro-chip,
+body.theme-elite .nutri-stat,
+body.theme-elite .field input,
+body.theme-elite .field select,
+body.theme-elite .modal-field input,
+body.theme-elite .modal-input,
+body.theme-elite #logNote,
+body.theme-elite .cal-cell{
+  border-radius:20px;
+  box-shadow:0 4px 18px rgba(0,0,0,0.35);
+}
+
+body.theme-elite .panel{
+  border-radius:24px;
+  padding:20px;
+}
+body.theme-elite .panel::before{
+  display:none; /* el detalle táctico de la esquina no encaja aquí */
+}
+
+body.theme-elite .cal-cell{
+  border-radius:8px;
+  box-shadow:none;
+}
+
+body.theme-elite .habit-box{
+  border-radius:7px;
+}
+body.theme-elite .water-track-diet span,
+body.theme-elite .water-track span,
+body.theme-elite .meal-track span{
+  border-radius:6px;
+}
+
+body.theme-elite .habit-item input:checked + .habit-box{
+  box-shadow:0 0 14px rgba(139,92,246,0.75);
+}
+body.theme-elite .water-track-diet span.filled{
+  box-shadow:0 0 10px rgba(139,92,246,0.6);
+}
+
+/* Botones: forma de píldora, microinteracción "press scale" y brillo CTA */
+body.theme-elite .btn-ghost,
+body.theme-elite .backup-btn,
+body.theme-elite .reset-btn,
+body.theme-elite .icon-btn,
+body.theme-elite .ex-btn,
+body.theme-elite .cal-nav-btn,
+body.theme-elite .peek-tab,
+body.theme-elite .modal-list-btn,
+body.theme-elite .camera-btn{
+  border-radius:14px;
+  transition:transform 0.15s cubic-bezier(.4,0,.2,1), box-shadow 0.15s ease, background 0.15s ease;
+}
+
+body.theme-elite .btn-ghost:active,
+body.theme-elite .backup-btn:active,
+body.theme-elite .icon-btn:active,
+body.theme-elite .ex-btn:active,
+body.theme-elite .cal-nav-btn:active,
+body.theme-elite .modal-list-btn:active,
+body.theme-elite .camera-btn:active,
+body.theme-elite .habit-remove:active,
+body.theme-elite .pin-remove:active,
+body.theme-elite .meal-entry-remove:active,
+body.theme-elite .ex-remove:active{
+  transform:scale(0.97);
+}
+
+body.theme-elite #calcKcalBtn,
+body.theme-elite #saveNoteBtn,
+body.theme-elite #exportBtn,
+body.theme-elite .modal-confirm{
+  background:var(--accent);
+  color:#0A0B0E;
+  font-weight:700;
+  border:none;
+  box-shadow:0 6px 20px rgba(139,92,246,0.45);
+}
+body.theme-elite #calcKcalBtn:active,
+body.theme-elite #saveNoteBtn:active,
+body.theme-elite #exportBtn:active,
+body.theme-elite .modal-confirm:active{
+  background:var(--accent);
+  transform:scale(0.97);
+  box-shadow:0 3px 12px rgba(139,92,246,0.4);
+}
+
+body.theme-elite .peek-tab{
+  box-shadow:0 4px 16px rgba(139,92,246,0.35);
+}
+
+/* Badges tipo "gamificación" para rachas, estados y etiquetas destacadas */
+body.theme-elite .streak,
+body.theme-elite .training-streak strong,
+body.theme-elite .week-day-label.today,
+body.theme-elite .wip-tag,
+body.theme-elite .cal-dot-good,
+body.theme-elite .status-dot{
+  border-radius:999px;
+}
+
+body.theme-elite .streak{
+  border:1px solid rgba(139,92,246,0.4);
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(139,92,246,0.08);
+}
+
+body.theme-elite .gold-banner{
+  border-radius:14px;
+}
+
+body.theme-elite .panel-eyebrow{
+  color:var(--amber);
+}
+
+/* Números/métricas: peso extra bold y look "de precisión" */
+body.theme-elite .kcal-box strong,
+body.theme-elite .macro-chip strong,
+body.theme-elite .week-stat strong,
+body.theme-elite .training-total strong,
+body.theme-elite .radar-pct,
+body.theme-elite .diet-pct{
+  font-weight:800;
+  letter-spacing:-0.5px;
+}
+
+body.theme-elite .nutri-label,
+body.theme-elite .kcal-label,
+body.theme-elite .panel-head h2{
+  letter-spacing:1.5px;
+}
+
+body.theme-elite .undo-toast{
+  border-radius:16px;
+}
+body.theme-elite .undo-toast-btn{
+  border-radius:999px;
+}
+
+body.theme-elite .scanner-frame,
+body.theme-elite .scanner-close{
+  border-radius:18px;
 }
