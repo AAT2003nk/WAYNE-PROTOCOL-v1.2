@@ -1,5 +1,5 @@
-const CACHE_NAME = 'wayne-protocol-v8';
-const ASSETS = [
+const CACHE_NAME = 'wayne-protocol-v9';
+const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
@@ -7,10 +7,24 @@ const ASSETS = [
   './manifest.json',
   './icon.svg'
 ];
+// Recursos externos: se intentan precachear para que funcionen offline desde
+// la primera visita, pero si fallan (sin red en el instante de instalar) no
+// deben romper la instalación del resto de la app — se cachearán solos en
+// cuanto se usen por primera vez con conexión, gracias al fetch handler.
+const EXTERNAL_ASSETS = [
+  'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js'
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(CORE_ASSETS);
+      await Promise.all(
+        EXTERNAL_ASSETS.map((url) =>
+          cache.add(url).catch(() => { /* sin red ahora mismo: no pasa nada */ })
+        )
+      );
+    })
   );
   self.skipWaiting();
 });

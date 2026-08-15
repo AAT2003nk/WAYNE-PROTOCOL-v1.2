@@ -105,6 +105,34 @@ Esto no afecta al tema Batgirl, que sigue siempre en rosa.
 - `saveData()` ahora atrapa errores de almacenamiento lleno y avisa una sola vez por sesión en vez de romper la app en silencio.
 - El reloj ya no comprueba los recordatorios cada segundo, solo una vez por minuto, para gastar menos batería/CPU.
 
+## v1.7 — notificaciones arregladas, macros, escáner real y calidad de vida
+
+### 🔔 Notificaciones — el bug de verdad
+Encontré dos causas exactas de por qué no llegaba nada:
+1. `Notification.requestPermission()` se llamaba después de un `await` a nuestro propio modal. En Safari/iOS (y cada vez más navegadores), eso pierde la "activación de usuario" real y el navegador bloquea el permiso en silencio, sin ni siquiera mostrar su diálogo. Arreglado: ahora esa llamada se dispara de forma síncrona dentro del mismo click del botón "ACTIVAR".
+2. Si el Service Worker no estaba listo, `serviceWorker.ready` podía quedarse esperando para siempre sin avisar de nada. Ahora hay un timeout de 1.5s y, si falla, se usa `Notification` directa como respaldo.
+3. Nuevo botón **"🧪 Probar notificación ahora"** en el menú de Permisos, para comprobar en el momento que funcionan sin esperar a las franjas horarias.
+
+*(Sigue siendo cierto lo que ya te expliqué antes: sin servidor propio, el aviso solo puede dispararse con garantías cuando abres la app dentro de las franjas 8:00-11:00 / 22:00-23:59. Eso no ha cambiado, es una limitación de plataforma, no un bug.)*
+
+### 📷 Escáner de código de barras (de verdad, no un simulacro)
+Investigué cómo lo hacen apps como Fitia y lo repliqué con herramientas gratuitas: uso **ZXing** (librería open source, sin coste, funciona también en iOS Safari) para leer el código de barras con la cámara, y en cuanto lo detecta consulta automáticamente **Open Food Facts** para traer kcal y macros del producto. Accesible desde el botón "+" de cualquier franja de comida, o desde el panel dedicado "ESCÁNER DE PRODUCTOS".
+**Importante para que no haya sorpresas**: esto reconoce productos envasados con código de barras (como hace el escáner "rápido" de Fitia/MyFitnessPal), no fotos de un plato de comida casera sin envasar — eso último es reconocimiento de imagen con IA de verdad, requiere APIs de pago con clave (Google Vision, LogMeal...) y no encaja en una web estática sin backend. Para comida casera sigue estando "Buscar producto" o "Añadir manualmente".
+
+### 🥩 Macros (proteína / carbohidratos / grasas)
+Cada entrada del registro de comidas puede guardar macros, ya sea automáticamente (al buscar o escanear un producto, Open Food Facts las trae solas) o a mano (formulario con los 4 campos — kcal, proteína, carbos, grasas — todos opcionales). El resumen del día ahora muestra los totales de macros junto a las kcal.
+
+### 📅 Calendario de adherencia también en Entrenamiento
+El mismo calendario mensual verde/rojo que ya tenía Dieta ahora existe también en la sección de Entrenamiento (días con algún ejercicio registrado = verde, sin nada = rojo).
+
+### 📡 Offline-first reforzado
+- Aviso discreto arriba de la pantalla cuando detecta que no hay conexión, para que sepas que sigue funcionando con normalidad.
+- El Service Worker ahora también precarga la librería del escáner para que, tras la primera visita, funcione sin conexión.
+- Recordatorio honesto: todo lo que ya tenías (hábitos, entreno, dieta, pins, bitácora) siempre ha sido 100% offline por naturaleza, porque vive en `localStorage`, que es local al dispositivo. Lo único que de verdad necesita internet es buscar/escanear alimentos (consulta a Open Food Facts) y la primera carga de fuentes/librerías externas.
+
+### ↩️ Deshacer en cualquier borrado (5 segundos)
+Al eliminar un hábito, un ejercicio, una entrada de comida o un pin, aparece un aviso abajo con botón "DESHACER" durante 5 segundos antes de que el borrado se guarde de verdad. Sustituye a los antiguos diálogos de confirmación — más rápido y menos intrusivo, con red de seguridad igualmente.
+
 ## Personalizar rápido
 Todo lo editable está en `app.js`, arriba del todo:
 ```js

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<title>WAYNE PROTOCOL v1.6</title>
+<title>WAYNE PROTOCOL v1.7</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -17,6 +17,7 @@
 
 <div class="scanlines"></div>
 <div class="vignette"></div>
+<div class="offline-banner" id="offlineBanner" hidden>📡 SIN CONEXIÓN — todo se sigue guardando en este dispositivo con normalidad</div>
 
 <div class="app-viewport" id="appViewport">
   <div class="app-track" id="appTrack">
@@ -65,6 +66,21 @@
             </div>
           </div>
           <p class="hint" id="kcalSummaryHint">Configura tu perfil físico más abajo para calcular tu objetivo diario.</p>
+
+          <div class="macro-summary" id="macroSummary" hidden>
+            <div class="macro-chip">
+              <span>PROTEÍNA</span>
+              <strong id="macroProtein">0g</strong>
+            </div>
+            <div class="macro-chip">
+              <span>CARBOS</span>
+              <strong id="macroCarbs">0g</strong>
+            </div>
+            <div class="macro-chip">
+              <span>GRASAS</span>
+              <strong id="macroFat">0g</strong>
+            </div>
+          </div>
         </section>
 
         <!-- ADHERENCIA MENSUAL -->
@@ -167,12 +183,12 @@
         <!-- CÁMARA -->
         <section class="panel" id="panel-camera">
           <div class="panel-head">
-            <h2>ANÁLISIS VISUAL DE COMIDA <span class="panel-eyebrow">// IA</span></h2>
+            <h2>ESCÁNER DE PRODUCTOS <span class="panel-eyebrow">// CÓDIGO DE BARRAS</span></h2>
           </div>
           <button class="btn-ghost full camera-btn" id="cameraBtn">
-            📷 ESCANEAR COMIDA CON CÁMARA
-            <span class="wip-tag">WORK IN PROGRESS</span>
+            📷 ESCANEAR CÓDIGO DE BARRAS
           </button>
+          <p class="hint">Lee el código de barras de un producto envasado y calcula sus kcal y macros al instante vía Open Food Facts. Para comida sin envasar (un plato casero, por ejemplo), usa "Buscar producto" o "Añadir manualmente" al registrar la comida.</p>
         </section>
 
         <p class="swipe-hint">→ Desliza o arrastra hacia la derecha para volver al Wayne Protocol</p>
@@ -280,6 +296,18 @@
           <div class="training-streak">
             <span>RACHA DE ENTRENAMIENTO</span>
             <strong id="trainingStreak">0 días</strong>
+          </div>
+
+          <div class="cal-divider"><span>ADHERENCIA MENSUAL</span></div>
+          <div class="cal-nav">
+            <button class="cal-nav-btn" id="calPrevBtnTraining" aria-label="Mes anterior">‹</button>
+            <span class="cal-month-label" id="calMonthLabelTraining">—</span>
+            <button class="cal-nav-btn" id="calNextBtnTraining" aria-label="Mes siguiente">›</button>
+          </div>
+          <div class="cal-grid" id="calGridTraining"></div>
+          <div class="cal-legend">
+            <span><i class="cal-dot cal-dot-good"></i> Con entreno</span>
+            <span><i class="cal-dot cal-dot-failed"></i> Sin datos</span>
           </div>
         </section>
 
@@ -393,6 +421,23 @@
   </li>
 </template>
 
+<!-- ESCÁNER DE CÓDIGO DE BARRAS -->
+<div class="scanner-overlay" id="scannerOverlay" hidden>
+  <div class="scanner-frame">
+    <video id="scannerVideo" class="scanner-video" playsinline muted></video>
+    <div class="scanner-reticle"></div>
+  </div>
+  <p class="scanner-status" id="scannerStatus">Apunta al código de barras del producto...</p>
+  <button class="scanner-close" id="scannerCloseBtn">✕ CANCELAR</button>
+</div>
+
+<!-- TOAST DE DESHACER -->
+<div class="undo-toast" id="undoToast" hidden>
+  <span class="undo-toast-msg" id="undoToastMsg">Elemento eliminado</span>
+  <button class="undo-toast-btn" id="undoToastBtn">↩ DESHACER</button>
+  <div class="undo-toast-bar" id="undoToastBar"></div>
+</div>
+
 <!-- MODAL GENÉRICO (reemplaza prompt/confirm/alert nativos) -->
 <div class="modal-overlay" id="modalOverlay" hidden>
   <div class="modal-box" id="modalBox" role="dialog" aria-modal="true">
@@ -403,6 +448,7 @@
     <div class="modal-input-wrap" id="modalInputWrap" hidden>
       <input type="text" class="modal-input" id="modalInput" maxlength="60">
     </div>
+    <div class="modal-fields" id="modalFields" hidden></div>
     <div class="modal-actions" id="modalActions">
       <button class="btn-ghost modal-cancel" id="modalCancelBtn">CANCELAR</button>
       <button class="btn-ghost modal-confirm" id="modalConfirmBtn">ACEPTAR</button>
@@ -410,6 +456,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js" defer></script>
 <script src="app.js"></script>
 </body>
 </html>

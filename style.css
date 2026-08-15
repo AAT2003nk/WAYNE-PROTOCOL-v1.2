@@ -600,7 +600,8 @@ main{
   color:var(--amber);
 }
 
-.profile-divider{
+.profile-divider,
+.cal-divider{
   display:flex;
   align-items:center;
   gap:10px;
@@ -610,7 +611,9 @@ main{
   color:var(--text-dim);
 }
 .profile-divider::before,
-.profile-divider::after{
+.profile-divider::after,
+.cal-divider::before,
+.cal-divider::after{
   content:"";
   flex:1;
   height:1px;
@@ -1582,4 +1585,229 @@ body:not(.theme-batgirl) #screenDiet.status-good{
 body:not(.theme-batgirl) #screenDiet.status-alert{
   --accent:#ff5555;
   --accent-dim:#8a1f1f;
+}
+
+/* ---------- TOAST DE DESHACER ---------- */
+
+.undo-toast{
+  position:fixed;
+  left:50%;
+  bottom:24px;
+  transform:translateX(-50%) translateY(0);
+  z-index:90;
+  background:#101010;
+  border:1px solid rgba(255,255,255,0.15);
+  color:#f2f2f2;
+  border-radius:8px;
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.5);
+  max-width:90vw;
+  overflow:hidden;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity 0.25s ease, transform 0.25s ease;
+}
+
+.undo-toast.show{
+  opacity:1;
+  pointer-events:auto;
+  transform:translateX(-50%) translateY(-4px);
+}
+
+.undo-toast-msg{
+  font-size:11px;
+  letter-spacing:0.3px;
+  white-space:nowrap;
+}
+
+.undo-toast-btn{
+  background:none;
+  border:1px solid rgba(255,255,255,0.3);
+  color:#fff;
+  font-family:var(--font-display);
+  font-size:10px;
+  letter-spacing:1px;
+  padding:6px 10px;
+  border-radius:4px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.undo-toast-btn:active{
+  background:rgba(255,255,255,0.15);
+}
+
+.undo-toast-bar{
+  position:absolute;
+  left:0; bottom:0;
+  height:2px;
+  width:100%;
+  background:var(--accent, #00e5c7);
+  transform-origin:left;
+  animation:undoShrink 5s linear forwards;
+}
+
+@keyframes undoShrink{
+  from{ transform:scaleX(1); }
+  to{ transform:scaleX(0); }
+}
+
+/* ---------- MODAL: VARIOS CAMPOS A LA VEZ (p.ej. macros) ---------- */
+
+.modal-fields{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-bottom:16px;
+}
+
+.modal-field{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.modal-field label{
+  font-size:9px;
+  letter-spacing:1px;
+  color:var(--text-dim);
+}
+
+.modal-field input{
+  width:100%;
+  box-sizing:border-box;
+  background:var(--bg-panel-2);
+  border:1px solid var(--line);
+  color:var(--text);
+  font-family:var(--font-mono);
+  font-size:13px;
+  padding:9px 10px;
+  border-radius:3px;
+}
+.modal-field input:focus{
+  outline:none;
+  border-color:var(--accent-dim);
+}
+
+/* ---------- ESCÁNER DE CÓDIGO DE BARRAS ---------- */
+
+.scanner-overlay{
+  position:fixed;
+  inset:0;
+  z-index:110;
+  background:#000;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:18px;
+  padding:20px;
+}
+
+.scanner-frame{
+  position:relative;
+  width:min(90vw, 380px);
+  aspect-ratio:4/3;
+  border-radius:10px;
+  overflow:hidden;
+  background:#111;
+  border:1px solid rgba(255,255,255,0.15);
+}
+
+.scanner-video{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.scanner-reticle{
+  position:absolute;
+  inset:18% 8%;
+  border:2px solid var(--accent, #00e5c7);
+  border-radius:6px;
+  box-shadow:0 0 0 2000px rgba(0,0,0,0.35);
+  pointer-events:none;
+}
+
+.scanner-status{
+  color:#eee;
+  font-family:var(--font-mono);
+  font-size:12px;
+  text-align:center;
+  max-width:320px;
+}
+
+.scanner-close{
+  background:transparent;
+  border:1px solid rgba(255,255,255,0.3);
+  color:#fff;
+  font-family:var(--font-display);
+  font-size:11px;
+  letter-spacing:1px;
+  padding:10px 18px;
+  border-radius:6px;
+  cursor:pointer;
+}
+.scanner-close:active{ background:rgba(255,255,255,0.12); }
+
+/* ---------- MACROS EN EL REGISTRO DE COMIDAS ---------- */
+
+.meal-entry{
+  flex-wrap:wrap;
+}
+
+.meal-entry-macros{
+  flex-basis:100%;
+  font-size:9px;
+  color:var(--amber);
+  letter-spacing:0.3px;
+}
+
+.macro-summary{
+  display:flex;
+  gap:10px;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
+
+.macro-chip{
+  flex:1;
+  min-width:70px;
+  background:var(--bg-panel-2);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:6px 8px;
+  text-align:center;
+}
+
+.macro-chip span{
+  display:block;
+  font-size:8px;
+  letter-spacing:1px;
+  color:var(--text-dim);
+}
+
+.macro-chip strong{
+  font-family:var(--font-display);
+  font-size:13px;
+  color:var(--accent);
+}
+
+/* ---------- INDICADOR OFFLINE ---------- */
+
+.offline-banner{
+  position:fixed;
+  top:0; left:0; right:0;
+  z-index:95;
+  background:#1a0f08;
+  color:#ffd27a;
+  border-bottom:1px solid #8a4a1f;
+  font-family:var(--font-mono);
+  font-size:10px;
+  letter-spacing:0.5px;
+  text-align:center;
+  padding:6px 10px;
+  padding-top:calc(6px + env(safe-area-inset-top));
 }

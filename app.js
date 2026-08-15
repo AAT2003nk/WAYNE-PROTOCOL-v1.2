@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v1.6 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v1.7 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -180,6 +180,7 @@ let today = ensureToday(state);
    ============================================================ */
 
 let modalResolve = null;
+let pendingOnConfirmSync = null;
 
 function showModal(opts){
   const overlay = document.getElementById('modalOverlay');
@@ -188,10 +189,12 @@ function showModal(opts){
   const wrap = document.getElementById('modalInputWrap');
   const inputEl = document.getElementById('modalInput');
   const listEl = document.getElementById('modalList');
+  const fieldsEl = document.getElementById('modalFields');
   const cancelBtn = document.getElementById('modalCancelBtn');
   const confirmBtn = document.getElementById('modalConfirmBtn');
 
   titleEl.textContent = opts.title || '';
+  pendingOnConfirmSync = typeof opts.onConfirmSync === 'function' ? opts.onConfirmSync : null;
 
   if(opts.message){
     msgEl.textContent = opts.message;
@@ -201,9 +204,12 @@ function showModal(opts){
   }
 
   listEl.innerHTML = '';
+  fieldsEl.innerHTML = '';
+
   if(opts.list && opts.list.length){
     listEl.hidden = false;
     wrap.hidden = true;
+    fieldsEl.hidden = true;
     confirmBtn.hidden = true;
     opts.list.forEach(item => {
       const btn = document.createElement('button');
@@ -213,8 +219,31 @@ function showModal(opts){
       btn.addEventListener('click', () => closeModal(item.value));
       listEl.appendChild(btn);
     });
+  } else if(opts.fields && opts.fields.length){
+    listEl.hidden = true;
+    wrap.hidden = true;
+    fieldsEl.hidden = false;
+    confirmBtn.hidden = false;
+    opts.fields.forEach(f => {
+      const wrapDiv = document.createElement('div');
+      wrapDiv.className = 'modal-field';
+      const label = document.createElement('label');
+      label.textContent = f.label;
+      label.setAttribute('for', `modalField-${f.key}`);
+      const input = document.createElement('input');
+      input.type = f.type || 'text';
+      if(f.inputmode) input.inputMode = f.inputmode;
+      input.id = `modalField-${f.key}`;
+      input.dataset.key = f.key;
+      input.placeholder = f.placeholder || '';
+      input.value = f.value || '';
+      wrapDiv.appendChild(label);
+      wrapDiv.appendChild(input);
+      fieldsEl.appendChild(wrapDiv);
+    });
   } else {
     listEl.hidden = true;
+    fieldsEl.hidden = true;
     confirmBtn.hidden = false;
     if(opts.input){
       wrap.hidden = false;
@@ -232,8 +261,13 @@ function showModal(opts){
 
   overlay.hidden = false;
 
-  if(opts.input && !opts.list){
+  if(opts.input && !opts.list && !opts.fields){
     setTimeout(() => inputEl.focus(), 50);
+  } else if(opts.fields && opts.fields.length){
+    setTimeout(() => {
+      const first = fieldsEl.querySelector('input');
+      if(first) first.focus();
+    }, 50);
   }
 
   return new Promise((resolve) => {
@@ -250,6 +284,7 @@ function showLoadingModal(title, message){
   msgEl.hidden = !message;
   document.getElementById('modalList').hidden = true;
   document.getElementById('modalInputWrap').hidden = true;
+  document.getElementById('modalFields').hidden = true;
   document.getElementById('modalActions').hidden = true;
   document.getElementById('modalSpinner').hidden = false;
   document.getElementById('modalOverlay').hidden = false;
@@ -263,6 +298,7 @@ function hideLoadingModal(){
 
 function closeModal(result){
   document.getElementById('modalOverlay').hidden = true;
+  pendingOnConfirmSync = null;
   if(modalResolve){
     const resolve = modalResolve;
     modalResolve = null;
@@ -275,8 +311,28 @@ function setupModalSystem(){
   const inputEl = document.getElementById('modalInput');
 
   document.getElementById('modalConfirmBtn').addEventListener('click', () => {
+    // CRÍTICO: si hay un onConfirmSync pendiente (p.ej. pedir permiso de
+    // notificaciones), se ejecuta AQUÍ, de forma síncrona, dentro del mismo
+    // evento de click real del usuario. Si en su lugar esperáramos a que se
+    // resuelva la promesa del modal para luego llamar a la API nativa, en
+    // Safari/iOS (y cada vez más navegadores) ya se habría perdido la
+    // "activación de usuario" y el permiso se bloquearía en silencio sin
+    // mostrar siquiera el diálogo del sistema. Esta es la causa por la que
+    // las notificaciones no llegaban en versiones anteriores.
+    if(pendingOnConfirmSync){
+      const fn = pendingOnConfirmSync;
+      pendingOnConfirmSync = null;
+      fn();
+    }
     const wrap = document.getElementById('modalInputWrap');
-    if(!wrap.hidden){
+    const fieldsEl = document.getElementById('modalFields');
+    if(!fieldsEl.hidden){
+      const result = {};
+      fieldsEl.querySelectorAll('input').forEach(inp => {
+        result[inp.dataset.key] = inp.value.trim();
+      });
+      closeModal(result);
+    } else if(!wrap.hidden){
       const val = inputEl.value.trim();
       closeModal(val.length ? val : null);
     } else {
@@ -297,8 +353,71 @@ function setupModalSystem(){
     }
   });
 
+  document.getElementById('modalFields').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      document.getElementById('modalConfirmBtn').click();
+    }
+  });
+
   document.addEventListener('keydown', (e) => {
     if(e.key === 'Escape' && !overlay.hidden) closeModal(null);
+  });
+}
+
+/* ============================================================
+   TOAST DE DESHACER — patrón genérico "borra ya, confirma en 5s"
+   Se usa en hábitos, ejercicios, comidas y pins: el elemento desaparece de
+   la vista al instante, pero NO se guarda en localStorage hasta que pasan
+   5s sin pulsar "Deshacer". Si el usuario deshace, se restaura tal cual.
+   ============================================================ */
+
+let pendingUndo = null; // { timeoutId, onUndo, onFinalize }
+
+function showUndoToast(message, onUndo, onFinalize){
+  // si ya había un borrado esperando confirmación, se confirma ya (se guarda)
+  // antes de empezar uno nuevo, para no acumular varios a la vez.
+  finalizePendingUndo();
+
+  const toast = document.getElementById('undoToast');
+  const bar = document.getElementById('undoToastBar');
+  document.getElementById('undoToastMsg').textContent = message;
+  toast.hidden = false;
+  // reinicia la animación de la barra de progreso
+  bar.style.animation = 'none';
+  void bar.offsetWidth;
+  bar.style.animation = '';
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  const timeoutId = setTimeout(() => {
+    finalizePendingUndo();
+  }, 5000);
+
+  pendingUndo = { timeoutId, onUndo, onFinalize };
+}
+
+function finalizePendingUndo(){
+  if(!pendingUndo) return;
+  clearTimeout(pendingUndo.timeoutId);
+  pendingUndo.onFinalize();
+  pendingUndo = null;
+  hideUndoToast();
+}
+
+function hideUndoToast(){
+  const toast = document.getElementById('undoToast');
+  toast.classList.remove('show');
+  setTimeout(() => { if(!toast.classList.contains('show')) toast.hidden = true; }, 250);
+}
+
+function setupUndoToast(){
+  document.getElementById('undoToastBtn').addEventListener('click', () => {
+    if(!pendingUndo) return;
+    clearTimeout(pendingUndo.timeoutId);
+    const undo = pendingUndo.onUndo;
+    pendingUndo = null;
+    undo();
+    hideUndoToast();
   });
 }
 
@@ -329,20 +448,26 @@ function renderHabits(){
       updateWeekly();
     });
 
-    node.querySelector('.habit-remove').addEventListener('click', async () => {
-      const ok = await showModal({
-        title: 'Eliminar protocolo',
-        message: `¿Eliminar "${name}" de tus protocolos diarios? Tu historial pasado se conserva.`,
-        confirmText: 'ELIMINAR',
-        danger: true
-      });
-      if(!ok) return;
-      state.habitDefs = state.habitDefs.filter(h => h !== name);
-      saveData(state);
+    node.querySelector('.habit-remove').addEventListener('click', () => {
+      const index = state.habitDefs.indexOf(name);
+      if(index === -1) return;
+      state.habitDefs.splice(index, 1);
       renderHabits();
       updateRadar();
       updateStreak();
       updateWeekly();
+
+      showUndoToast(
+        `Protocolo "${name}" eliminado`,
+        () => { // deshacer
+          state.habitDefs.splice(index, 0, name);
+          renderHabits();
+          updateRadar();
+          updateStreak();
+          updateWeekly();
+        },
+        () => { saveData(state); } // confirmar (pasados los 5s)
+      );
     });
 
     list.appendChild(node);
@@ -604,6 +729,7 @@ function renderExercises(){
       renderExercises();
       updateTrainingTotal();
       updateTrainingStreak();
+      trainingCalendar.render();
     });
     node.querySelector('.minus').addEventListener('click', () => {
       today.exercises[idx].count = Math.max(0, today.exercises[idx].count - 1);
@@ -611,13 +737,27 @@ function renderExercises(){
       renderExercises();
       updateTrainingTotal();
       updateTrainingStreak();
+      trainingCalendar.render();
     });
     node.querySelector('.ex-remove').addEventListener('click', () => {
+      const removed = today.exercises[idx];
       today.exercises.splice(idx,1);
-      saveData(state);
       renderExercises();
       updateTrainingTotal();
       updateTrainingStreak();
+      trainingCalendar.render();
+
+      showUndoToast(
+        `Ejercicio "${removed.name}" eliminado`,
+        () => {
+          today.exercises.splice(idx, 0, removed);
+          renderExercises();
+          updateTrainingTotal();
+          updateTrainingStreak();
+          trainingCalendar.render();
+        },
+        () => { saveData(state); }
+      );
     });
     list.appendChild(node);
   });
@@ -642,6 +782,7 @@ document.getElementById('addExerciseBtn').addEventListener('click', async () => 
     renderExercises();
     updateTrainingTotal();
     updateTrainingStreak();
+    trainingCalendar.render();
   }
 });
 
@@ -680,6 +821,25 @@ function mealSlotTotal(slot){
   return entries.reduce((sum, e) => sum + (e.kcal || 0), 0);
 }
 
+function mealSlotMacros(slot){
+  const entries = (today.mealLog && today.mealLog[slot]) || [];
+  return entries.reduce((acc, e) => {
+    acc.protein += (e.macros && e.macros.protein) || 0;
+    acc.carbs += (e.macros && e.macros.carbs) || 0;
+    acc.fat += (e.macros && e.macros.fat) || 0;
+    return acc;
+  }, { protein:0, carbs:0, fat:0 });
+}
+
+function formatMacros(macros){
+  if(!macros) return '';
+  const parts = [];
+  if(macros.protein) parts.push(`P ${Math.round(macros.protein)}g`);
+  if(macros.carbs) parts.push(`C ${Math.round(macros.carbs)}g`);
+  if(macros.fat) parts.push(`G ${Math.round(macros.fat)}g`);
+  return parts.join(' · ');
+}
+
 function renderMealSlots(){
   const container = document.getElementById('mealSlots');
   if(!container) return;
@@ -706,13 +866,33 @@ function renderMealSlots(){
         const eNode = entryTpl.content.cloneNode(true);
         eNode.querySelector('.meal-entry-name').textContent = entry.name;
         eNode.querySelector('.meal-entry-kcal').textContent = entry.kcal ? `${entry.kcal} kcal` : '—';
+        const macrosTxt = formatMacros(entry.macros);
+        if(macrosTxt){
+          const macrosEl = document.createElement('span');
+          macrosEl.className = 'meal-entry-macros';
+          macrosEl.textContent = macrosTxt;
+          eNode.querySelector('.meal-entry').appendChild(macrosEl);
+        }
         eNode.querySelector('.meal-entry-remove').addEventListener('click', () => {
-          today.mealLog[slot] = today.mealLog[slot].filter(e => e.id !== entry.id);
-          saveData(state);
+          const entryIndex = today.mealLog[slot].findIndex(e => e.id === entry.id);
+          if(entryIndex === -1) return;
+          today.mealLog[slot].splice(entryIndex, 1);
           renderMealSlots();
           updateKcalSummary();
           updateDietStatusTheme();
           renderMonthCalendar();
+
+          showUndoToast(
+            `"${entry.name}" eliminado de ${slot}`,
+            () => {
+              today.mealLog[slot].splice(entryIndex, 0, entry);
+              renderMealSlots();
+              updateKcalSummary();
+              updateDietStatusTheme();
+              renderMonthCalendar();
+            },
+            () => { saveData(state); }
+          );
         });
         list.appendChild(eNode);
       });
@@ -728,6 +908,24 @@ function renderMealSlots(){
    no guarda ni reenvía nada de esto en ningún servidor propio (no existe
    backend). Requiere conexión a internet; si falla, se ofrece modo manual. */
 
+function parseFoodProduct(p){
+  const n = p.nutriments || {};
+  return {
+    name: p.product_name,
+    brand: p.brands ? p.brands.split(',')[0].trim() : '',
+    barcode: p.code || null,
+    kcalPer100g: n['energy-kcal_100g'] ? parseFloat(n['energy-kcal_100g']) : null,
+    kcalPerServing: n['energy-kcal_serving'] ? parseFloat(n['energy-kcal_serving']) : null,
+    proteinPer100g: n['proteins_100g'] ? parseFloat(n['proteins_100g']) : 0,
+    proteinPerServing: n['proteins_serving'] ? parseFloat(n['proteins_serving']) : null,
+    carbsPer100g: n['carbohydrates_100g'] ? parseFloat(n['carbohydrates_100g']) : 0,
+    carbsPerServing: n['carbohydrates_serving'] ? parseFloat(n['carbohydrates_serving']) : null,
+    fatPer100g: n['fat_100g'] ? parseFloat(n['fat_100g']) : 0,
+    fatPerServing: n['fat_serving'] ? parseFloat(n['fat_serving']) : null,
+    servingSize: p.serving_size || null
+  };
+}
+
 async function searchFoodApi(query){
   const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=6`;
   const res = await fetch(url);
@@ -738,19 +936,27 @@ async function searchFoodApi(query){
     p.nutriments &&
     (p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal_serving'])
   );
-  return products.slice(0, 5).map(p => ({
-    name: p.product_name,
-    brand: p.brands ? p.brands.split(',')[0].trim() : '',
-    kcalPer100g: p.nutriments['energy-kcal_100g'] ? parseFloat(p.nutriments['energy-kcal_100g']) : null,
-    kcalPerServing: p.nutriments['energy-kcal_serving'] ? parseFloat(p.nutriments['energy-kcal_serving']) : null,
-    servingSize: p.serving_size || null
-  }));
+  return products.slice(0, 5).map(parseFoodProduct);
 }
 
-function pushMealEntry(slot, name, kcal){
+async function lookupFoodByBarcode(barcode){
+  const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('network');
+  const data = await res.json();
+  if(data.status !== 1 || !data.product || !data.product.product_name) return null;
+  return parseFoodProduct(data.product);
+}
+
+function pushMealEntry(slot, name, kcal, macros){
   if(!today.mealLog) today.mealLog = {};
   if(!today.mealLog[slot]) today.mealLog[slot] = [];
-  today.mealLog[slot].push({ id: Date.now().toString(36), name, kcal, at: nowStamp() });
+  today.mealLog[slot].push({
+    id: Date.now().toString(36),
+    name, kcal,
+    macros: macros || null,
+    at: nowStamp()
+  });
   saveData(state);
   renderMealSlots();
   updateKcalSummary();
@@ -769,16 +975,28 @@ async function addMealEntryManual(slot, prefill){
   });
   if(!name) return;
 
-  const kcalRaw = await showModal({
-    title: 'Kcal aproximadas',
-    message: 'Opcional — déjalo vacío si no lo sabes.',
-    input: true,
-    placeholder: 'Ej. 450',
+  const macroFields = await showModal({
+    title: 'Kcal y macros (todo opcional)',
+    message: 'Déjalo en blanco lo que no sepas — solo se guarda lo que rellenes.',
+    fields: [
+      { key:'kcal', label:'Kcal', placeholder:'Ej. 450', type:'number', inputmode:'decimal' },
+      { key:'protein', label:'Proteína (g)', placeholder:'Ej. 30', type:'number', inputmode:'decimal' },
+      { key:'carbs', label:'Carbohidratos (g)', placeholder:'Ej. 40', type:'number', inputmode:'decimal' },
+      { key:'fat', label:'Grasas (g)', placeholder:'Ej. 12', type:'number', inputmode:'decimal' }
+    ],
     confirmText: 'GUARDAR',
-    cancelText: 'SIN DATO'
+    cancelText: 'CANCELAR'
   });
-  const kcal = kcalRaw ? (parseInt(kcalRaw) || null) : null;
-  pushMealEntry(slot, name, kcal);
+  if(!macroFields) return;
+
+  const kcal = macroFields.kcal ? (parseFloat(macroFields.kcal.replace(',', '.')) || null) : null;
+  const macros = {
+    protein: parseFloat((macroFields.protein || '').replace(',', '.')) || 0,
+    carbs: parseFloat((macroFields.carbs || '').replace(',', '.')) || 0,
+    fat: parseFloat((macroFields.fat || '').replace(',', '.')) || 0
+  };
+  const hasMacros = macros.protein || macros.carbs || macros.fat;
+  pushMealEntry(slot, name, kcal, hasMacros ? macros : null);
 }
 
 async function addMealEntry(slot){
@@ -786,7 +1004,8 @@ async function addMealEntry(slot){
     title: `Añadir a ${slot}`,
     message: '¿Cómo quieres registrarlo?',
     list: [
-      { label: '🔍 Buscar producto <span class="list-btn-kcal">calcula las kcal automáticamente</span>', value: 'search' },
+      { label: '📷 Escanear código de barras <span class="list-btn-kcal">cámara, al instante</span>', value: 'scan' },
+      { label: '🔍 Buscar producto <span class="list-btn-kcal">calcula kcal y macros solo</span>', value: 'search' },
       { label: '✍️ Añadir manualmente', value: 'manual' }
     ]
   });
@@ -794,6 +1013,17 @@ async function addMealEntry(slot){
 
   if(mode === 'manual'){
     await addMealEntryManual(slot);
+    return;
+  }
+
+  if(mode === 'scan'){
+    const product = await openBarcodeScanner();
+    if(!product) return;
+    if(product.manualFallback){
+      await addMealEntryManual(slot);
+      return;
+    }
+    await addProductToSlot(slot, product);
     return;
   }
 
@@ -855,14 +1085,21 @@ async function addMealEntry(slot){
   if(!picked) return;
   if(picked === 'manual'){ await addMealEntryManual(slot, query); return; }
 
-  const perUnit = picked.kcalPerServing || picked.kcalPer100g;
-  const unitLabel = picked.kcalPerServing
+  await addProductToSlot(slot, picked);
+}
+
+// Común a "buscar producto" y "escanear código de barras": pide raciones y
+// calcula kcal + macros a partir de los datos de Open Food Facts.
+async function addProductToSlot(slot, picked){
+  const perUnitKcal = picked.kcalPerServing || picked.kcalPer100g;
+  const usingServing = !!picked.kcalPerServing;
+  const unitLabel = usingServing
     ? `${Math.round(picked.kcalPerServing)} kcal por ración${picked.servingSize ? ' ('+picked.servingSize+')' : ''}`
     : `${Math.round(picked.kcalPer100g)} kcal por cada 100g`;
 
   const servingsRaw = await showModal({
     title: '¿Cuántas raciones?',
-    message: `${picked.name} — ${unitLabel}. Escribe cuántas raciones (o "100g") vas a tomar.`,
+    message: `${picked.name}${picked.brand ? ' — ' + picked.brand : ''} — ${unitLabel}. Escribe cuántas raciones (o "100g") vas a tomar.`,
     input: true,
     inputValue: '1',
     placeholder: 'Ej. 1, 2, 0.5',
@@ -871,10 +1108,109 @@ async function addMealEntry(slot){
   if(!servingsRaw) return;
 
   const servings = parseFloat(servingsRaw.replace(',', '.')) || 1;
-  const totalKcal = Math.round(perUnit * servings);
+  const totalKcal = Math.round(perUnitKcal * servings);
   const displayName = `${picked.name}${servings !== 1 ? ` ×${servings}` : ''}`;
 
-  pushMealEntry(slot, displayName, totalKcal);
+  const proteinUnit = usingServing ? (picked.proteinPerServing ?? picked.proteinPer100g) : picked.proteinPer100g;
+  const carbsUnit = usingServing ? (picked.carbsPerServing ?? picked.carbsPer100g) : picked.carbsPer100g;
+  const fatUnit = usingServing ? (picked.fatPerServing ?? picked.fatPer100g) : picked.fatPer100g;
+
+  const macros = {
+    protein: Math.round((proteinUnit || 0) * servings * 10) / 10,
+    carbs: Math.round((carbsUnit || 0) * servings * 10) / 10,
+    fat: Math.round((fatUnit || 0) * servings * 10) / 10
+  };
+  const hasMacros = macros.protein || macros.carbs || macros.fat;
+
+  pushMealEntry(slot, displayName, totalKcal, hasMacros ? macros : null);
+}
+
+/* ---------------- ESCÁNER DE CÓDIGO DE BARRAS (ZXing + Open Food Facts) ----------------
+   ZXing (@zxing/library) es una librería open source y gratuita que lee
+   códigos de barras directamente del vídeo de la cámara, sin depender de
+   ninguna API nativa del navegador (por eso funciona también en iOS Safari,
+   donde la BarcodeDetector nativa no existe). Cero claves, cero servidor. */
+
+async function openBarcodeScanner(){
+  if(typeof ZXing === 'undefined'){
+    await showModal({
+      title: 'Escáner no disponible',
+      message: 'No se ha podido cargar el lector de códigos de barras (revisa tu conexión a internet la primera vez que lo uses) — prueba con "Buscar producto" mientras tanto.',
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+    return null;
+  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    await showModal({
+      title: 'Sin cámara',
+      message: 'Este dispositivo o navegador no permite acceder a la cámara.',
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+    return null;
+  }
+
+  const overlay = document.getElementById('scannerOverlay');
+  const video = document.getElementById('scannerVideo');
+  const statusEl = document.getElementById('scannerStatus');
+  const closeBtn = document.getElementById('scannerCloseBtn');
+  statusEl.textContent = 'Apunta al código de barras del producto...';
+  overlay.hidden = false;
+
+  const reader = new ZXing.BrowserMultiFormatReader();
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    function cleanup(){
+      try{ reader.reset(); }catch(err){ /* silencioso */ }
+      overlay.hidden = true;
+      closeBtn.removeEventListener('click', onCancel);
+    }
+
+    function onCancel(){
+      if(settled) return;
+      settled = true;
+      cleanup();
+      resolve(null);
+    }
+    closeBtn.addEventListener('click', onCancel);
+
+    reader.decodeFromVideoDevice(undefined, video, async (result, err) => {
+      if(settled || !result) return;
+      settled = true;
+      const barcode = result.getText();
+      statusEl.textContent = `Código detectado: ${barcode}. Consultando...`;
+
+      let product = null;
+      try{
+        product = await lookupFoodByBarcode(barcode);
+      }catch(e){ /* sin conexión o fallo de red */ }
+
+      cleanup();
+
+      if(!product){
+        const tryManual = await showModal({
+          title: 'Producto no encontrado',
+          message: `El código ${barcode} no está en la base de datos de Open Food Facts, o no se pudo consultar. ¿Quieres añadirlo a mano?`,
+          confirmText: 'AÑADIR MANUAL',
+          cancelText: 'CANCELAR'
+        });
+        resolve(tryManual ? { manualFallback: true } : null);
+        return;
+      }
+      resolve(product);
+    }).catch((err) => {
+      if(settled) return;
+      settled = true;
+      cleanup();
+      showModal({
+        title: 'No se pudo abrir la cámara',
+        message: 'Comprueba que le has dado permiso de cámara a la app (botón "PERMISOS") y que ninguna otra app la esté usando.',
+        hideCancel: true, confirmText: 'ENTENDIDO'
+      });
+      resolve(null);
+    });
+  });
 }
 
 /* ---------------- MODO DIETA: RESUMEN KCAL Y ANILLO ---------------- */
@@ -882,6 +1218,16 @@ async function addMealEntry(slot){
 function todayKcalConsumed(){
   if(!today.mealLog) return 0;
   return MEAL_SLOTS.reduce((sum, slot) => sum + mealSlotTotal(slot), 0);
+}
+
+function todayMacrosConsumed(){
+  return MEAL_SLOTS.reduce((acc, slot) => {
+    const m = mealSlotMacros(slot);
+    acc.protein += m.protein;
+    acc.carbs += m.carbs;
+    acc.fat += m.fat;
+    return acc;
+  }, { protein:0, carbs:0, fat:0 });
 }
 
 function updateKcalSummary(){
@@ -922,12 +1268,24 @@ function updateKcalSummary(){
   }
   const pctEl = document.getElementById('dietPct');
   if(pctEl) pctEl.textContent = pct + '%';
+
+  const macros = todayMacrosConsumed();
+  const macroBox = document.getElementById('macroSummary');
+  if(macroBox){
+    const hasAnyMacro = macros.protein || macros.carbs || macros.fat;
+    macroBox.hidden = !hasAnyMacro;
+    if(hasAnyMacro){
+      document.getElementById('macroProtein').textContent = `${Math.round(macros.protein)}g`;
+      document.getElementById('macroCarbs').textContent = `${Math.round(macros.carbs)}g`;
+      document.getElementById('macroFat').textContent = `${Math.round(macros.fat)}g`;
+    }
+  }
 }
 
-/* ---------------- MODO DIETA: ADHERENCIA (calendario + estado dinámico) ----------------
-   Un día "cuenta" (verde) si tiene al menos una comida registrada o algo de
-   agua anotada. Un día pasado sin nada de eso es "fallido" (rojo). Los días
-   futuros o anteriores a que existiera la app se muestran neutros/atenuados. */
+/* ---------------- ADHERENCIA: MOTOR GENÉRICO DE CALENDARIO ----------------
+   Se usa tanto para el Modo Dieta (comidas/agua) como para Entrenamiento
+   (ejercicios), cada uno con su propia función "¿este día cuenta?" y sus
+   propios botones/rejilla en el DOM. */
 
 function dayHasDietData(day){
   if(!day) return false;
@@ -936,75 +1294,95 @@ function dayHasDietData(day){
   return !!(hasMeals || hasWater);
 }
 
-function computeDayCalStatus(key){
+function dayHasTrainingData(day){
+  if(!day) return false;
+  return !!(day.exercises && day.exercises.some(e => e.count > 0));
+}
+
+function computeDayCalStatus(key, hasDataFn){
   const todayStr = todayKey();
   if(key > todayStr) return 'future';
   if(key < state.startDate) return 'before-start';
   const day = state.days[key];
-  const hasData = dayHasDietData(day);
+  const hasData = hasDataFn(day);
   if(key === todayStr) return hasData ? 'good' : 'pending';
   return hasData ? 'good' : 'failed';
 }
 
-let calViewYear = null;
-let calViewMonth = null; // 0-indexado
+function createMonthCalendar(ids, hasDataFn){
+  const view = { year: null, month: null };
 
-function renderMonthCalendar(){
-  const grid = document.getElementById('calGrid');
-  const label = document.getElementById('calMonthLabel');
-  if(!grid || calViewYear === null) return;
+  function render(){
+    const grid = document.getElementById(ids.grid);
+    const label = document.getElementById(ids.label);
+    if(!grid || view.year === null) return;
 
-  const firstOfMonth = new Date(calViewYear, calViewMonth, 1);
-  const startWeekday = (firstOfMonth.getDay() + 6) % 7; // 0 = lunes
-  const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+    const firstOfMonth = new Date(view.year, view.month, 1);
+    const startWeekday = (firstOfMonth.getDay() + 6) % 7; // 0 = lunes
+    const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
 
-  label.textContent = firstOfMonth.toLocaleDateString('es-ES', { month:'long', year:'numeric' }).toUpperCase();
+    label.textContent = firstOfMonth.toLocaleDateString('es-ES', { month:'long', year:'numeric' }).toUpperCase();
 
-  grid.innerHTML = '';
-  for(let i=0; i<startWeekday; i++){
-    const cell = document.createElement('div');
-    cell.className = 'cal-cell cal-empty';
-    grid.appendChild(cell);
-  }
+    grid.innerHTML = '';
+    for(let i=0; i<startWeekday; i++){
+      const cell = document.createElement('div');
+      cell.className = 'cal-cell cal-empty';
+      grid.appendChild(cell);
+    }
 
-  const todayStr = todayKey();
-  for(let d=1; d<=daysInMonth; d++){
-    const dateObj = new Date(calViewYear, calViewMonth, d);
-    const key = localDateKey(dateObj);
-    const status = computeDayCalStatus(key);
-    const cell = document.createElement('div');
-    cell.className = `cal-cell cal-${status}`;
-    if(key === todayStr) cell.classList.add('cal-today');
-    cell.textContent = d;
-    grid.appendChild(cell);
-  }
+    const todayStr = todayKey();
+    for(let d=1; d<=daysInMonth; d++){
+      const dateObj = new Date(view.year, view.month, d);
+      const key = localDateKey(dateObj);
+      const status = computeDayCalStatus(key, hasDataFn);
+      const cell = document.createElement('div');
+      cell.className = `cal-cell cal-${status}`;
+      if(key === todayStr) cell.classList.add('cal-today');
+      cell.textContent = d;
+      grid.appendChild(cell);
+    }
 
-  const realNow = new Date();
-  const isCurrentMonth = (calViewYear === realNow.getFullYear() && calViewMonth === realNow.getMonth());
-  document.getElementById('calNextBtn').disabled = isCurrentMonth;
-}
-
-function setupMonthCalendar(){
-  const now = new Date();
-  calViewYear = now.getFullYear();
-  calViewMonth = now.getMonth();
-
-  document.getElementById('calPrevBtn').addEventListener('click', () => {
-    calViewMonth--;
-    if(calViewMonth < 0){ calViewMonth = 11; calViewYear--; }
-    renderMonthCalendar();
-  });
-
-  document.getElementById('calNextBtn').addEventListener('click', () => {
     const realNow = new Date();
-    if(calViewYear === realNow.getFullYear() && calViewMonth === realNow.getMonth()) return;
-    calViewMonth++;
-    if(calViewMonth > 11){ calViewMonth = 0; calViewYear++; }
-    renderMonthCalendar();
-  });
+    const isCurrentMonth = (view.year === realNow.getFullYear() && view.month === realNow.getMonth());
+    document.getElementById(ids.nextBtn).disabled = isCurrentMonth;
+  }
 
-  renderMonthCalendar();
+  function setup(){
+    const now = new Date();
+    view.year = now.getFullYear();
+    view.month = now.getMonth();
+
+    document.getElementById(ids.prevBtn).addEventListener('click', () => {
+      view.month--;
+      if(view.month < 0){ view.month = 11; view.year--; }
+      render();
+    });
+
+    document.getElementById(ids.nextBtn).addEventListener('click', () => {
+      const realNow = new Date();
+      if(view.year === realNow.getFullYear() && view.month === realNow.getMonth()) return;
+      view.month++;
+      if(view.month > 11){ view.month = 0; view.year++; }
+      render();
+    });
+
+    render();
+  }
+
+  return { setup, render };
 }
+
+const dietCalendar = createMonthCalendar(
+  { grid:'calGrid', label:'calMonthLabel', prevBtn:'calPrevBtn', nextBtn:'calNextBtn' },
+  dayHasDietData
+);
+const trainingCalendar = createMonthCalendar(
+  { grid:'calGridTraining', label:'calMonthLabelTraining', prevBtn:'calPrevBtnTraining', nextBtn:'calNextBtnTraining' },
+  dayHasTrainingData
+);
+
+function renderMonthCalendar(){ dietCalendar.render(); trainingCalendar.render(); }
+function setupMonthCalendar(){ dietCalendar.setup(); trainingCalendar.setup(); }
 
 // Estado reciente de adherencia: cuenta días fallidos consecutivos hacia
 // atrás (sin contar hoy, que aún está en curso). 0 fallos = verde (buena
@@ -1144,13 +1522,21 @@ async function calcAndShowKcal(){
 
 document.getElementById('calcKcalBtn').addEventListener('click', calcAndShowKcal);
 
-document.getElementById('cameraBtn').addEventListener('click', () => {
-  showModal({
-    title: 'Próximamente',
-    message: '🦇 Alfred está calibrando el análisis visual de comida. Llegará en una próxima versión del Wayne Protocol.',
-    hideCancel: true,
-    confirmText: 'ENTENDIDO'
+document.getElementById('cameraBtn').addEventListener('click', async () => {
+  const product = await openBarcodeScanner();
+  if(!product) return;
+
+  const slot = await showModal({
+    title: '¿A qué franja lo añadimos?',
+    list: MEAL_SLOTS.map(s => ({ label: s, value: s }))
   });
+  if(!slot) return;
+
+  if(product.manualFallback){
+    await addMealEntryManual(slot);
+    return;
+  }
+  await addProductToSlot(slot, product);
 });
 
 /* ---------------- SALÓN DE LA FAMA (PINS) ---------------- */
@@ -1203,17 +1589,20 @@ function renderPins(){
     img.src = pin.dataUrl;
     img.alt = pin.caption || 'Pin del Salón de la Fama';
     node.querySelector('.pin-caption').textContent = pin.caption || pin.date;
-    node.querySelector('.pin-remove').addEventListener('click', async () => {
-      const ok = await showModal({
-        title: 'Eliminar pin',
-        message: '¿Quitar esta imagen del Salón de la Fama? No se puede deshacer.',
-        confirmText: 'ELIMINAR',
-        danger: true
-      });
-      if(!ok) return;
-      state.pins = state.pins.filter(p => p.id !== pin.id);
-      saveData(state);
+    node.querySelector('.pin-remove').addEventListener('click', () => {
+      const index = state.pins.findIndex(p => p.id === pin.id);
+      if(index === -1) return;
+      state.pins.splice(index, 1);
       renderPins();
+
+      showUndoToast(
+        'Pin eliminado del Salón de la Fama',
+        () => {
+          state.pins.splice(index, 0, pin);
+          renderPins();
+        },
+        () => { saveData(state); }
+      );
     });
     grid.appendChild(node);
   });
@@ -1490,7 +1879,7 @@ async function requestNotificationPermission(explain){
     if(explain){
       await showModal({
         title: '🔔 Notificaciones activas',
-        message: 'Ya están activadas. Alfred, Dick Grayson y Bruce te avisarán como mucho dos veces al día (mañana y noche) si se te olvida registrar algo.',
+        message: 'Ya están activadas. Alfred, Dick Grayson y Bruce te avisarán como mucho dos veces al día (mañana y noche) si se te olvida registrar algo. Usa "🧪 Probar notificación" para comprobar que te llegan bien.',
         hideCancel: true, confirmText: 'PERFECTO'
       });
     }
@@ -1502,49 +1891,65 @@ async function requestNotificationPermission(explain){
     if(explain){
       await showModal({
         title: '🔔 Notificaciones bloqueadas',
-        message: 'Las tienes bloqueadas a nivel de navegador. Si cambias de opinión, actívalas desde los ajustes del propio sitio (icono de candado en la barra de direcciones).',
+        message: 'Las tienes bloqueadas a nivel de navegador. Si cambias de opinión, actívalas desde los ajustes del propio sitio (icono de candado/ⓘ en la barra de direcciones) y luego recarga la app.',
         hideCancel: true, confirmText: 'ENTENDIDO'
       });
     }
     return;
   }
 
-  const wantsIt = await showModal({
+  // IMPORTANTE: Notification.requestPermission() se dispara dentro de
+  // onConfirmSync, es decir, de forma SÍNCRONA en el mismo click del botón
+  // "ACTIVAR" — no después de un await. Ver el comentario en
+  // setupModalSystem() para el porqué exacto de esto.
+  await showModal({
     title: '🔔 Notificaciones',
-    message: 'Alfred, Dick Grayson y Bruce quieren mandarte como mucho 2 avisos al día (uno por la mañana, otro sobre las 23:00) solo si se te olvida registrar algo. Nada invasivo. ¿Los activamos?',
+    message: 'Alfred, Dick Grayson y Bruce quieren mandarte como mucho 2 avisos al día (mañana y ~23:00) solo si se te olvida registrar algo. ¿Los activamos?',
     confirmText: 'ACTIVAR',
-    cancelText: 'AHORA NO'
+    cancelText: 'AHORA NO',
+    onConfirmSync: () => {
+      Notification.requestPermission().then((result) => {
+        if(result === 'granted'){
+          registerPeriodicSyncBestEffort();
+          showModal({
+            title: '🔔 ¡Activadas!',
+            message: 'Prueba a tocar "🧪 Probar notificación" en el menú de Permisos para comprobar que te llega bien en este dispositivo.',
+            hideCancel: true, confirmText: 'GENIAL'
+          });
+        } else if(result === 'denied'){
+          showModal({
+            title: '🔔 Permiso denegado',
+            message: 'Sin problema. Si cambias de opinión más adelante, puedes volver a intentarlo desde el botón "PERMISOS".',
+            hideCancel: true, confirmText: 'VALE'
+          });
+        }
+      }).catch(() => {});
+    }
   });
-  if(!wantsIt) return;
-
-  try{
-    const result = await Notification.requestPermission();
-    if(result === 'granted') registerPeriodicSyncBestEffort();
-  }catch(err){ /* el usuario cerró el diálogo nativo del navegador; no pasa nada */ }
 }
 
 async function requestCameraPermission(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     return;
   }
-  const wantsIt = await showModal({
+  await showModal({
     title: '📷 Cámara',
-    message: 'Cuando el escáner de comida esté listo hará falta tu cámara. ¿Damos el permiso ya para tenerlo preparado? Puedes decir que no ahora y te lo pediremos más adelante.',
+    message: 'Para escanear códigos de barras de productos hace falta tu cámara. ¿Damos el permiso ya?',
     confirmText: 'PERMITIR',
-    cancelText: 'AHORA NO'
+    cancelText: 'AHORA NO',
+    onConfirmSync: () => {
+      navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+        stream.getTracks().forEach(t => t.stop());
+        showModal({
+          title: '📷 Cámara lista',
+          message: 'Permiso concedido. Ya puedes usar "Escanear código de barras" en el registro de comidas.',
+          hideCancel: true, confirmText: 'GENIAL'
+        });
+      }).catch(() => {
+        // el usuario denegó o no hay cámara disponible; no insistimos
+      });
+    }
   });
-  if(!wantsIt) return;
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    stream.getTracks().forEach(t => t.stop());
-    await showModal({
-      title: '📷 Cámara lista',
-      message: 'Permiso concedido. En cuanto el escáner de comida esté terminado, ya podrá usar tu cámara sin pedirte nada de nuevo.',
-      hideCancel: true, confirmText: 'GENIAL'
-    });
-  }catch(err){
-    // el usuario denegó o no hay cámara disponible; no insistimos
-  }
 }
 
 async function explainGalleryAccess(){
@@ -1569,14 +1974,39 @@ async function openPermissionsMenu(){
     message: '¿Qué quieres revisar?',
     list: [
       { label: '🔔 Notificaciones', value: 'notif' },
+      { label: '🧪 Probar notificación ahora', value: 'test' },
       { label: '📷 Cámara', value: 'camera' },
       { label: '🖼️ Galería (info)', value: 'gallery' }
     ]
   });
   if(!choice) return;
   if(choice === 'notif') await requestNotificationPermission(true);
+  else if(choice === 'test') await sendTestNotification();
   else if(choice === 'camera') await requestCameraPermission();
   else if(choice === 'gallery') await explainGalleryAccess();
+}
+
+async function sendTestNotification(){
+  if(!('Notification' in window)){
+    await showModal({ title:'Sin soporte', message:'Este navegador no soporta notificaciones.', hideCancel:true, confirmText:'ENTENDIDO' });
+    return;
+  }
+  if(Notification.permission !== 'granted'){
+    await showModal({
+      title:'Todavía no están activadas',
+      message:'Activa antes las notificaciones desde "🔔 Notificaciones" en este mismo menú.',
+      hideCancel:true, confirmText:'ENTENDIDO'
+    });
+    return;
+  }
+  const ok = await fireReminderNotification('Alfred', 'Esto es una notificación de prueba del Wayne Protocol. Si la ves, todo funciona correctamente.');
+  await showModal({
+    title: ok ? '🧪 Enviada' : '🧪 No se pudo enviar',
+    message: ok
+      ? 'Si no la has visto aparecer, revisa que el sistema operativo no tenga las notificaciones del navegador silenciadas (fuera de la app, en los ajustes del propio teléfono).'
+      : 'Ha fallado el envío. Repasa el permiso de notificaciones en los ajustes del navegador y vuelve a intentarlo.',
+    hideCancel: true, confirmText: 'ENTENDIDO'
+  });
 }
 
 // Best-effort: la Periodic Background Sync API solo existe en Chrome/Android
@@ -1635,6 +2065,35 @@ function currentReminderSlot(){
   return null;
 }
 
+// Envía una notificación de forma robusta: si el Service Worker no está
+// listo en 1.5s (registro fallido, scope incorrecto, etc.) no nos quedamos
+// colgados esperando para siempre — caemos a la API Notification directa,
+// que no depende del Service Worker en absoluto.
+async function fireReminderNotification(title, body){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return false;
+
+  if('serviceWorker' in navigator && navigator.serviceWorker.controller){
+    try{
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('sw-timeout')), 1500))
+      ]);
+      await reg.showNotification(title, { body, icon: 'icon.svg', badge: 'icon.svg', tag: 'wayne-reminder' });
+      return true;
+    }catch(err){
+      console.warn('Wayne Protocol: showNotification vía Service Worker falló o tardó demasiado, uso Notification directa.', err);
+    }
+  }
+
+  try{
+    new Notification(title, { body, icon: 'icon.svg' });
+    return true;
+  }catch(err){
+    console.error('Wayne Protocol: no se pudo mostrar ninguna notificación.', err);
+    return false;
+  }
+}
+
 async function maybeSendReminder(){
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -1654,15 +2113,29 @@ async function maybeSendReminder(){
   }
 
   const { title, body } = pickRandomNotification();
-  try{
-    if('serviceWorker' in navigator){
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title, { body, icon: 'icon.svg', badge: 'icon.svg', tag: 'wayne-reminder' });
-    } else {
-      new Notification(title, { body, icon: 'icon.svg' });
-    }
-    localStorage.setItem(flagKey, '1');
-  }catch(err){ /* silencioso: si falla el envío, se reintentará el siguiente minuto */ }
+  const sent = await fireReminderNotification(title, body);
+  if(sent) localStorage.setItem(flagKey, '1');
+}
+
+/* ---------------- INDICADOR DE CONEXIÓN (offline-first) ----------------
+   Todo lo esencial de la app (hábitos, entreno, dieta, pins, bitácora...)
+   ya funciona 100% sin conexión porque vive en localStorage, que es local al
+   dispositivo por naturaleza — no hace falta "activar" nada para eso. Lo
+   único que de verdad necesita internet es: la búsqueda de alimentos, el
+   escáner de código de barras (consulta a Open Food Facts) y la primera
+   carga de fuentes/librerías externas. Este aviso es solo para que sepas
+   por qué esas dos cosas concretas pueden fallar si no tienes red. */
+
+function updateOfflineBanner(){
+  const banner = document.getElementById('offlineBanner');
+  if(!banner) return;
+  banner.hidden = navigator.onLine;
+}
+
+function setupOfflineIndicator(){
+  updateOfflineBanner();
+  window.addEventListener('online', updateOfflineBanner);
+  window.addEventListener('offline', updateOfflineBanner);
 }
 
 /* ---------------- RESET OCULTO ---------------- */
@@ -1724,10 +2197,12 @@ function renderAll(){
 }
 
 setupModalSystem();
+setupUndoToast();
 setupHiddenReset();
 setupSwipe();
 setupBackup();
 setupMonthCalendar();
+setupOfflineIndicator();
 renderAll();
 tickClock();
 maybeSendReminder();
