@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<title>WAYNE PROTOCOL v1.8</title>
+<title>WAYNE PROTOCOL v2.1</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -33,7 +33,7 @@
         <div class="radar-wrap">
           <svg viewBox="0 0 240 240" class="radar diet-radar">
             <defs>
-              <linearGradient id="eliteArcGradientDiet" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id="ymirArcGradientDiet" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stop-color="#8B5CF6"/>
                 <stop offset="100%" stop-color="#06B6D4"/>
               </linearGradient>
@@ -104,6 +104,16 @@
             <span><i class="cal-dot cal-dot-good"></i> Con registro</span>
             <span><i class="cal-dot cal-dot-failed"></i> Sin datos</span>
           </div>
+        </section>
+
+        <!-- PACKS DE COMIDA -->
+        <section class="panel" id="panel-packs">
+          <div class="panel-head">
+            <h2>MIS PACKS <span class="panel-eyebrow">// COMIDAS GUARDADAS</span></h2>
+            <button class="icon-btn" id="addPackBtn" title="Crear pack">+</button>
+          </div>
+          <p class="hint">Guarda una comida completa una vez (ej. "Desayuno de fuerza") y añádela entera a cualquier franja con un solo toque.</p>
+          <div class="pack-list" id="packList"></div>
         </section>
 
         <!-- REGISTRO DE COMIDAS -->
@@ -186,36 +196,24 @@
           <div class="weight-progress" id="weightProgress"></div>
         </section>
 
-        <!-- CÁMARA -->
-        <section class="panel" id="panel-camera">
-          <div class="panel-head">
-            <h2>ESCÁNER DE PRODUCTOS <span class="panel-eyebrow">// CÓDIGO DE BARRAS</span></h2>
-          </div>
-          <button class="btn-ghost full camera-btn" id="cameraBtn">
-            📷 ESCANEAR CÓDIGO DE BARRAS
-          </button>
-          <p class="hint">Lee el código de barras de un producto envasado y calcula sus kcal y macros al instante vía Open Food Facts. Para comida sin envasar (un plato casero, por ejemplo), usa "Buscar producto" o "Añadir manualmente" al registrar la comida.</p>
-        </section>
-
         <p class="swipe-hint">→ Desliza o arrastra hacia la derecha para volver al Wayne Protocol</p>
 
       </main>
 
-      <button class="peek-tab peek-tab-right" id="peekToMain" aria-label="Volver al Wayne Protocol">🦇</button>
     </section>
 
     <!-- ================= WAYNE PROTOCOL (PRINCIPAL) ================= -->
     <section class="screen screen-main" id="screenMain">
       <header class="hud">
         <div class="hud-top">
-          <span class="brand">W.A.<span id="eliteTrigger" class="brand-y">Y</span>.N.<span id="batgirlTrigger" class="brand-e">E</span></span>
+          <span class="brand">W.A.<span id="ymirTrigger" class="brand-y">Y</span>.N.<span id="batgirlTrigger" class="brand-e">E</span></span>
           <span class="brand-sub">PROTOCOLO NOCTURNO</span>
         </div>
 
         <div class="radar-wrap">
           <svg id="radar" viewBox="0 0 240 240" class="radar">
             <defs>
-              <linearGradient id="eliteArcGradientMain" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id="ymirArcGradientMain" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stop-color="#8B5CF6"/>
                 <stop offset="100%" stop-color="#06B6D4"/>
               </linearGradient>
@@ -310,6 +308,9 @@
             <strong id="trainingStreak">0 días</strong>
           </div>
 
+          <div class="cal-divider"><span>VOLUMEN SEMANAL</span></div>
+          <div class="week-chart" id="trainingWeekChart"></div>
+
           <div class="cal-divider"><span>ADHERENCIA MENSUAL</span></div>
           <div class="cal-nav">
             <button class="cal-nav-btn" id="calPrevBtnTraining" aria-label="Mes anterior">‹</button>
@@ -336,10 +337,10 @@
           <div class="log-history" id="logHistory"></div>
         </section>
 
-        <!-- SALÓN DE LA FAMA -->
+        <!-- MOTIVACIÓN PERSONAL -->
         <section class="panel" id="panel-pins">
           <div class="panel-head">
-            <h2>SALÓN DE LA FAMA <span class="panel-eyebrow">// PINS</span></h2>
+            <h2>MOTIVACIÓN PERSONAL <span class="panel-eyebrow">// PINS</span></h2>
             <button class="icon-btn" id="addPinBtn" title="Añadir pin">+</button>
           </div>
           <p class="hint">Fotos y recuerdos que te recuerdan por qué empezaste. Se guardan solo en este dispositivo.</p>
@@ -376,9 +377,75 @@
 
       </main>
 
-      <button class="peek-tab peek-tab-left" id="peekToDiet" aria-label="Entrar en Modo Dieta">🍽</button>
     </section>
 
+  </div>
+</div>
+
+<!-- BOTTOM HOT BAR -->
+<nav class="hot-bar" id="hotBar">
+  <button class="hot-btn" id="hotSocialBtn" data-target="social">
+    <span class="hot-icon">👥</span>
+    <span class="hot-label">Social</span>
+  </button>
+  <button class="hot-btn" id="hotTrainingBtn" data-target="main">
+    <span class="hot-icon">🏋️</span>
+    <span class="hot-label">Entreno</span>
+  </button>
+  <button class="hot-btn hot-btn-plus" id="hotPlusBtn">
+    <span class="hot-plus-icon">+</span>
+  </button>
+  <button class="hot-btn" id="hotDietBtn" data-target="diet">
+    <span class="hot-icon">🍽️</span>
+    <span class="hot-label">Dietas</span>
+  </button>
+  <button class="hot-btn" id="hotProfileBtn" data-target="profile">
+    <span class="hot-icon">👤</span>
+    <span class="hot-label">Perfil</span>
+  </button>
+</nav>
+
+<!-- PANTALLA DE PERFIL (invitado) -->
+<div class="sheet-overlay" id="profileOverlay" hidden>
+  <div class="sheet-card">
+    <button class="sheet-close" id="profileCloseBtn">✕</button>
+    <div class="profile-avatar-wrap">
+      <img class="profile-avatar" id="profileAvatarImg" src="icon.svg" alt="Avatar">
+      <button class="profile-avatar-edit" id="profileAvatarEditBtn" title="Cambiar foto">📷</button>
+      <input type="file" id="profileAvatarInput" accept="image/*" hidden>
+    </div>
+    <h3 class="profile-handle" id="profileHandle">@invitado</h3>
+    <p class="profile-guest-tag">Cuenta de invitado — todo se guarda solo en este dispositivo</p>
+
+    <div class="profile-stats">
+      <div class="profile-stat">
+        <strong id="profileStatDay">1</strong>
+        <span>Día</span>
+      </div>
+      <div class="profile-stat">
+        <strong id="profileStatStreak">0</strong>
+        <span>Racha</span>
+      </div>
+      <div class="profile-stat">
+        <strong id="profileStatPins">0</strong>
+        <span>Pins</span>
+      </div>
+    </div>
+
+    <button class="btn-ghost full" id="profileGoogleBtn">🔗 Vincular con Google</button>
+    <p class="hint">Próximamente: iniciar sesión con Google para usar tu foto real y elegir tu propio @, con permiso explícito para correos. De momento tu cuenta es 100% local y anónima.</p>
+  </div>
+</div>
+
+<!-- PANTALLA SOCIAL (roadmap) -->
+<div class="sheet-overlay" id="socialOverlay" hidden>
+  <div class="sheet-card">
+    <button class="sheet-close" id="socialCloseBtn">✕</button>
+    <div class="profile-avatar-wrap" style="margin-bottom:6px;">
+      <span style="font-size:44px;">👥</span>
+    </div>
+    <h3 class="profile-handle">Social — próximamente</h3>
+    <p class="profile-guest-tag">Perfiles públicos, fotos, likes y comentarios necesitan un servidor y una base de datos de verdad — algo que una app puramente local como esta todavía no tiene. Está en el roadmap, no es humo: cuando exista backend, se activará aquí mismo.</p>
   </div>
 </div>
 
@@ -397,12 +464,27 @@
 <template id="exerciseItemTpl">
   <div class="exercise-row">
     <span class="ex-name"></span>
+    <span class="ex-pr" hidden>🏆 PR</span>
     <div class="ex-controls">
       <button class="ex-btn minus">−</button>
       <span class="ex-count">0</span>
       <button class="ex-btn plus">+</button>
     </div>
     <button class="ex-remove">×</button>
+  </div>
+</template>
+
+<template id="packItemTpl">
+  <div class="pack-item">
+    <div class="pack-item-head">
+      <span class="pack-item-name"></span>
+      <span class="pack-item-kcal"></span>
+    </div>
+    <p class="pack-item-contents"></p>
+    <div class="pack-item-actions">
+      <button class="btn-ghost pack-add-btn">AÑADIR A...</button>
+      <button class="pack-remove">×</button>
+    </div>
   </div>
 </template>
 
@@ -419,6 +501,7 @@
     <div class="meal-slot-head">
       <span class="meal-slot-name"></span>
       <span class="meal-slot-kcal"></span>
+      <button class="icon-btn meal-pack-btn" title="Guardar como pack">💾</button>
       <button class="icon-btn meal-add-btn" title="Añadir alimento">+</button>
     </div>
     <ul class="meal-entry-list"></ul>
@@ -432,6 +515,24 @@
     <button class="meal-entry-remove">×</button>
   </li>
 </template>
+
+<!-- CELEBRACIÓN DE RACHA -->
+<div class="celebration-overlay" id="celebrationOverlay" hidden>
+  <div class="celebration-card">
+    <div class="celebration-emoji" id="celebrationEmoji">🔥</div>
+    <h3 class="celebration-title" id="celebrationTitle">¡Racha activa!</h3>
+    <p class="celebration-sub" id="celebrationSub"></p>
+    <div class="celebration-week" id="celebrationWeek"></div>
+    <button class="celebration-close" id="celebrationCloseBtn">SEGUIR ASÍ</button>
+  </div>
+</div>
+
+<!-- LIGHTBOX DE MOTIVACIÓN PERSONAL -->
+<div class="lightbox-overlay" id="lightboxOverlay" hidden>
+  <button class="lightbox-close" id="lightboxCloseBtn">✕</button>
+  <img class="lightbox-img" id="lightboxImg" src="" alt="">
+  <div class="lightbox-caption" id="lightboxCaption"></div>
+</div>
 
 <!-- ESCÁNER DE CÓDIGO DE BARRAS -->
 <div class="scanner-overlay" id="scannerOverlay" hidden>

@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v1.8 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v2.1 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -72,6 +72,9 @@ function freshState(){
     },
     weightHistory: [],
     pins: [],
+    mealPacks: [],
+    exercisePRs: {},
+    profileMeta: null,
     days: {}
   };
 }
@@ -102,6 +105,9 @@ function loadData(){
   }
   if(!data.weightHistory) data.weightHistory = [];
   if(!data.pins) data.pins = [];
+  if(!data.mealPacks) data.mealPacks = [];
+  if(!data.exercisePRs) data.exercisePRs = {};
+  if(!data.profileMeta) data.profileMeta = null; // se genera solo al abrir Perfil por primera vez
   if(!data.days) data.days = {};
   if(!data.startDate) data.startDate = todayKey();
 
@@ -580,10 +586,32 @@ function tickClock(){
   }
 }
 
+// Insignias de racha — puro azúcar de gamificación, sin afectar a los datos
+function getStreakBadge(n){
+  if(n >= 100) return '👑';
+  if(n >= 60) return '💎';
+  if(n >= 30) return '🥇';
+  if(n >= 14) return '🥈';
+  if(n >= 7) return '🥉';
+  if(n >= 3) return '🔥';
+  return '';
+}
+
+function habitDayComplete(day){
+  if(!day) return false;
+  const vals = Object.values(day.habits || {});
+  return vals.length > 0 && vals.every(v => v.done);
+}
+
+function trainingDayFullyComplete(day){
+  if(!day || !day.exercises || day.exercises.length === 0) return false;
+  return day.exercises.every(e => e.count > 0);
+}
+
 function updateStreak(){
   let streak = 0;
   let cursor = new Date();
-  const todayComplete = habitPercent() === 100;
+  const todayComplete = habitDayComplete(today);
   if(todayComplete) streak = 1;
 
   cursor.setDate(cursor.getDate() - 1);
@@ -591,19 +619,21 @@ function updateStreak(){
     const key = localDateKey(cursor);
     const day = state.days[key];
     if(!day) break;
-    const vals = Object.values(day.habits || {});
-    const complete = vals.length > 0 && vals.every(v => v.done);
-    if(!complete) break;
+    if(!habitDayComplete(day)) break;
     streak++;
     cursor.setDate(cursor.getDate() - 1);
   }
-  document.getElementById('streakText').textContent = `RACHA: ${streak}`;
+  const badge = getStreakBadge(streak);
+  document.getElementById('streakText').textContent = `RACHA: ${streak}${badge ? ' ' + badge : ''}`;
+
+  if(todayComplete) maybeCelebrate('habits', streak);
 }
 
 function updateTrainingStreak(){
   let streak = 0;
   let cursor = new Date();
   today.trainingDone = today.exercises.some(e => e.count > 0);
+  const fullyComplete = trainingDayFullyComplete(today);
   if(today.trainingDone) streak = 1;
 
   cursor.setDate(cursor.getDate() - 1);
@@ -616,7 +646,75 @@ function updateTrainingStreak(){
     streak++;
     cursor.setDate(cursor.getDate() - 1);
   }
-  document.getElementById('trainingStreak').textContent = `${streak} día${streak === 1 ? '' : 's'}`;
+  const badge = getStreakBadge(streak);
+  document.getElementById('trainingStreak').textContent = `${streak} día${streak === 1 ? '' : 's'}${badge ? ' ' + badge : ''}`;
+
+  if(fullyComplete) maybeCelebrate('training', streak);
+}
+
+/* ---------------- CELEBRACIÓN DE RACHA (estilo Duolingo) ----------------
+   Se dispara la PRIMERA vez que, en el día, se completa el 100% de los
+   protocolos o se hacen todos los ejercicios propuestos. Muestra la semana
+   (lunes-domingo) con los días conseguidos, como el popup de racha de
+   Duolingo. Máximo una vez por tipo y por día (con flag en localStorage). */
+
+function maybeCelebrate(kind, streakCount){
+  const flagKey = `wayneCelebrate:${kind}:${todayKey()}`;
+  if(localStorage.getItem(flagKey)) return;
+  localStorage.setItem(flagKey, '1');
+
+  const hasDataFn = kind === 'habits' ? habitDayComplete : trainingDayFullyComplete;
+  const monday = getMonday(new Date());
+  const todayStr = todayKey();
+  const weekDays = [];
+  for(let i=0; i<7; i++){
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    const key = localDateKey(d);
+    weekDays.push({
+      label: DAY_LABELS[i],
+      done: hasDataFn(state.days[key]),
+      isToday: key === todayStr,
+      isFuture: key > todayStr
+    });
+  }
+
+  const badge = getStreakBadge(streakCount);
+  const title = kind === 'habits' ? '¡Protocolo completo!' : '¡Entrenamiento completo!';
+  const sub = kind === 'habits'
+    ? `Racha de ${streakCount} día${streakCount === 1 ? '' : 's'} con el 100% de tus hábitos.`
+    : `Racha de ${streakCount} día${streakCount === 1 ? '' : 's'} completando todo el entreno.`;
+
+  showCelebration(badge || (kind === 'habits' ? '🦇' : '💪'), title, sub, weekDays);
+}
+
+function showCelebration(emoji, title, sub, weekDays){
+  document.getElementById('celebrationEmoji').textContent = emoji;
+  document.getElementById('celebrationTitle').textContent = title;
+  document.getElementById('celebrationSub').textContent = sub;
+
+  const weekEl = document.getElementById('celebrationWeek');
+  weekEl.innerHTML = '';
+  weekDays.forEach(d => {
+    const pill = document.createElement('div');
+    pill.className = 'celebration-day' + (d.done ? ' done' : '') + (d.isToday ? ' today' : '') + (d.isFuture ? ' future' : '');
+    const span = document.createElement('span');
+    span.textContent = d.label;
+    const i = document.createElement('i');
+    i.textContent = d.done ? '✓' : '';
+    pill.appendChild(span);
+    pill.appendChild(i);
+    weekEl.appendChild(pill);
+  });
+
+  document.getElementById('celebrationOverlay').hidden = false;
+}
+
+function setupCelebration(){
+  const overlay = document.getElementById('celebrationOverlay');
+  const close = () => { overlay.hidden = true; };
+  document.getElementById('celebrationCloseBtn').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if(e.target === overlay) close(); });
 }
 
 /* ---------------- ANÁLISIS SEMANAL ---------------- */
@@ -715,6 +813,16 @@ function updateWeekly(){
 
 /* ---------------- ENTRENAMIENTO ---------------- */
 
+function checkAndUpdatePR(name, count){
+  if(!state.exercisePRs) state.exercisePRs = {};
+  const best = state.exercisePRs[name] || 0;
+  if(count > best){
+    state.exercisePRs[name] = count;
+    return true;
+  }
+  return false;
+}
+
 function renderExercises(){
   const list = document.getElementById('trainingList');
   const tpl = document.getElementById('exerciseItemTpl');
@@ -723,13 +831,19 @@ function renderExercises(){
     const node = tpl.content.cloneNode(true);
     node.querySelector('.ex-name').textContent = ex.name;
     node.querySelector('.ex-count').textContent = ex.count;
+    const best = (state.exercisePRs && state.exercisePRs[ex.name]) || 0;
+    const prEl = node.querySelector('.ex-pr');
+    prEl.hidden = !(ex.count > 0 && ex.count >= best);
+
     node.querySelector('.plus').addEventListener('click', () => {
       today.exercises[idx].count += 1;
+      checkAndUpdatePR(ex.name, today.exercises[idx].count);
       saveData(state);
       renderExercises();
       updateTrainingTotal();
       updateTrainingStreak();
       trainingCalendar.render();
+      renderTrainingWeekChart();
     });
     node.querySelector('.minus').addEventListener('click', () => {
       today.exercises[idx].count = Math.max(0, today.exercises[idx].count - 1);
@@ -738,6 +852,7 @@ function renderExercises(){
       updateTrainingTotal();
       updateTrainingStreak();
       trainingCalendar.render();
+      renderTrainingWeekChart();
     });
     node.querySelector('.ex-remove').addEventListener('click', () => {
       const removed = today.exercises[idx];
@@ -746,6 +861,7 @@ function renderExercises(){
       updateTrainingTotal();
       updateTrainingStreak();
       trainingCalendar.render();
+      renderTrainingWeekChart();
 
       showUndoToast(
         `Ejercicio "${removed.name}" eliminado`,
@@ -755,11 +871,53 @@ function renderExercises(){
           updateTrainingTotal();
           updateTrainingStreak();
           trainingCalendar.render();
+          renderTrainingWeekChart();
         },
         () => { saveData(state); }
       );
     });
     list.appendChild(node);
+  });
+}
+
+function dayTrainingVolume(day){
+  if(!day || !day.exercises) return 0;
+  return day.exercises.reduce((sum, e) => sum + e.count, 0);
+}
+
+function renderTrainingWeekChart(){
+  const container = document.getElementById('trainingWeekChart');
+  if(!container) return;
+  const monday = getMonday(new Date());
+  const todayStr = todayKey();
+
+  const volumes = [];
+  for(let i=0; i<7; i++){
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    const key = localDateKey(d);
+    volumes.push({ date: key, vol: dayTrainingVolume(state.days[key]) });
+  }
+  const maxVol = Math.max(1, ...volumes.map(v => v.vol));
+
+  container.innerHTML = '';
+  volumes.forEach((v, idx) => {
+    const col = document.createElement('div');
+    col.className = 'week-bar-col';
+    const track = document.createElement('div');
+    track.className = 'week-bar-track';
+    const bar = document.createElement('div');
+    const pct = v.vol > 0 ? Math.max(6, Math.round((v.vol / maxVol) * 100)) : 0;
+    bar.className = 'week-bar' + (v.vol === 0 ? ' empty' : '') + (v.date === todayStr ? ' today' : '');
+    bar.style.height = pct + '%';
+    bar.title = `${v.vol} reps`;
+    track.appendChild(bar);
+    const label = document.createElement('span');
+    label.className = 'week-day-label' + (v.date === todayStr ? ' today' : '');
+    label.textContent = DAY_LABELS[idx];
+    col.appendChild(track);
+    col.appendChild(label);
+    container.appendChild(col);
   });
 }
 
@@ -783,6 +941,7 @@ document.getElementById('addExerciseBtn').addEventListener('click', async () => 
     updateTrainingTotal();
     updateTrainingStreak();
     trainingCalendar.render();
+    renderTrainingWeekChart();
   }
 });
 
@@ -853,6 +1012,7 @@ function renderMealSlots(){
     const total = mealSlotTotal(slot);
     node.querySelector('.meal-slot-kcal').textContent = total > 0 ? `${total} kcal` : '';
     node.querySelector('.meal-add-btn').addEventListener('click', () => addMealEntry(slot));
+    node.querySelector('.meal-pack-btn').addEventListener('click', () => saveSlotAsPack(slot));
 
     const list = node.querySelector('.meal-entry-list');
     const entries = (today.mealLog && today.mealLog[slot]) || [];
@@ -949,13 +1109,22 @@ async function lookupFoodByBarcode(barcode){
 }
 
 function pushMealEntry(slot, name, kcal, macros){
+  pushMealEntries(slot, [{ name, kcal, macros }]);
+}
+
+// Versión "en bloque": añade varios alimentos a la vez a una franja con un
+// único guardado (la usa tanto un pack completo como una entrada suelta).
+function pushMealEntries(slot, items){
   if(!today.mealLog) today.mealLog = {};
   if(!today.mealLog[slot]) today.mealLog[slot] = [];
-  today.mealLog[slot].push({
-    id: Date.now().toString(36),
-    name, kcal,
-    macros: macros || null,
-    at: nowStamp()
+  items.forEach(item => {
+    today.mealLog[slot].push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      name: item.name,
+      kcal: item.kcal,
+      macros: item.macros || null,
+      at: nowStamp()
+    });
   });
   saveData(state);
   renderMealSlots();
@@ -963,6 +1132,160 @@ function pushMealEntry(slot, name, kcal, macros){
   updateDietStatusTheme();
   renderMonthCalendar();
 }
+
+/* ---------------- PACKS DE COMIDA ----------------
+   Un pack es una comida completa (varios alimentos con sus kcal/macros)
+   guardada una sola vez, para poder meterla entera en cualquier franja con
+   un toque — sin volver a escribir cada componente cada día. */
+
+function packTotalKcal(pack){
+  return pack.items.reduce((sum, it) => sum + (it.kcal || 0), 0);
+}
+
+function renderPacks(){
+  const container = document.getElementById('packList');
+  if(!container) return;
+  const tpl = document.getElementById('packItemTpl');
+  container.innerHTML = '';
+
+  if(!state.mealPacks || state.mealPacks.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'pack-empty';
+    empty.textContent = 'Aún no tienes packs guardados.';
+    container.appendChild(empty);
+    return;
+  }
+
+  state.mealPacks.forEach(pack => {
+    const node = tpl.content.cloneNode(true);
+    node.querySelector('.pack-item-name').textContent = pack.name;
+    node.querySelector('.pack-item-kcal').textContent = `${packTotalKcal(pack)} kcal`;
+    node.querySelector('.pack-item-contents').textContent = pack.items.map(it => it.name).join(' · ');
+
+    node.querySelector('.pack-add-btn').addEventListener('click', () => addPackToSlot(pack));
+
+    node.querySelector('.pack-remove').addEventListener('click', () => {
+      const index = state.mealPacks.findIndex(p => p.id === pack.id);
+      if(index === -1) return;
+      state.mealPacks.splice(index, 1);
+      renderPacks();
+      showUndoToast(
+        `Pack "${pack.name}" eliminado`,
+        () => { state.mealPacks.splice(index, 0, pack); renderPacks(); },
+        () => { saveData(state); }
+      );
+    });
+
+    container.appendChild(node);
+  });
+}
+
+async function addPackToSlot(pack){
+  const slot = await showModal({
+    title: `Añadir "${pack.name}" a...`,
+    list: MEAL_SLOTS.map(s => ({ label: s, value: s }))
+  });
+  if(!slot) return;
+  pushMealEntries(slot, pack.items);
+}
+
+// Crea un pack desde cero: nombre + bucle de alimentos (kcal/macros a mano).
+async function createMealPackFlow(){
+  const name = await showModal({
+    title: 'Nuevo pack',
+    message: 'Ej. "Desayuno de fuerza", "Comida post-entreno"...',
+    input: true,
+    placeholder: 'Nombre del pack',
+    confirmText: 'SIGUIENTE'
+  });
+  if(!name) return;
+
+  const items = [];
+  let addingMore = true;
+
+  while(addingMore){
+    const fields = await showModal({
+      title: items.length === 0 ? 'Primer alimento' : `Alimento ${items.length + 1}`,
+      message: 'Kcal y macros opcionales — solo se guarda lo que rellenes.',
+      fields: [
+        { key:'name', label:'Alimento', placeholder:'Ej. Avena con plátano' },
+        { key:'kcal', label:'Kcal', placeholder:'Ej. 350', type:'number', inputmode:'decimal' },
+        { key:'protein', label:'Proteína (g)', placeholder:'Ej. 20', type:'number', inputmode:'decimal' },
+        { key:'carbs', label:'Carbohidratos (g)', placeholder:'Ej. 40', type:'number', inputmode:'decimal' },
+        { key:'fat', label:'Grasas (g)', placeholder:'Ej. 8', type:'number', inputmode:'decimal' }
+      ],
+      confirmText: 'GUARDAR ALIMENTO',
+      cancelText: items.length === 0 ? 'CANCELAR' : 'TERMINAR PACK'
+    });
+
+    if(!fields){
+      if(items.length === 0) return; // se canceló sin añadir nada, no se crea el pack
+      break;
+    }
+    if(!fields.name){
+      break; // confirmó vacío = por si acaso, tratamos como fin
+    }
+
+    const macros = {
+      protein: parseFloat((fields.protein || '').replace(',', '.')) || 0,
+      carbs: parseFloat((fields.carbs || '').replace(',', '.')) || 0,
+      fat: parseFloat((fields.fat || '').replace(',', '.')) || 0
+    };
+    const hasMacros = macros.protein || macros.carbs || macros.fat;
+
+    items.push({
+      name: fields.name,
+      kcal: fields.kcal ? (parseFloat(fields.kcal.replace(',', '.')) || null) : null,
+      macros: hasMacros ? macros : null
+    });
+
+    const continueChoice = await showModal({
+      title: `Pack "${name}" — ${items.length} alimento${items.length===1?'':'s'}`,
+      list: [
+        { label: '➕ Añadir otro alimento', value: 'more' },
+        { label: '✅ Terminar y guardar pack', value: 'done' }
+      ]
+    });
+    addingMore = continueChoice === 'more';
+    if(!continueChoice) break; // cerró el modal: terminamos igualmente con lo que haya
+  }
+
+  if(items.length === 0) return;
+
+  state.mealPacks.push({ id: Date.now().toString(36), name, items });
+  saveData(state);
+  renderPacks();
+}
+
+// Atajo: convierte lo que ya has registrado hoy en una franja en un pack
+// reutilizable, sin tener que volver a escribirlo todo.
+async function saveSlotAsPack(slot){
+  const entries = (today.mealLog && today.mealLog[slot]) || [];
+  if(entries.length === 0){
+    await showModal({
+      title: 'Franja vacía',
+      message: `Todavía no has registrado nada en ${slot} hoy.`,
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+    return;
+  }
+  const name = await showModal({
+    title: `Guardar ${slot} como pack`,
+    message: `Se guardarán los ${entries.length} alimento${entries.length===1?'':'s'} de ${slot} de hoy como un pack reutilizable.`,
+    input: true,
+    inputValue: slot.charAt(0) + slot.slice(1).toLowerCase(),
+    placeholder: 'Nombre del pack',
+    confirmText: 'GUARDAR'
+  });
+  if(!name) return;
+
+  const items = entries.map(e => ({ name: e.name, kcal: e.kcal, macros: e.macros || null }));
+  state.mealPacks.push({ id: Date.now().toString(36), name, items });
+  saveData(state);
+  renderPacks();
+}
+
+document.getElementById('addPackBtn').addEventListener('click', createMealPackFlow);
 
 async function addMealEntryManual(slot, prefill){
   const name = await showModal({
@@ -1309,7 +1632,7 @@ function computeDayCalStatus(key, hasDataFn){
   return hasData ? 'good' : 'failed';
 }
 
-function createMonthCalendar(ids, hasDataFn){
+function createMonthCalendar(ids, hasDataFn, detailFn){
   const view = { year: null, month: null };
 
   function render(){
@@ -1339,6 +1662,10 @@ function createMonthCalendar(ids, hasDataFn){
       cell.className = `cal-cell cal-${status}`;
       if(key === todayStr) cell.classList.add('cal-today');
       cell.textContent = d;
+      if(status !== 'future' && status !== 'before-start'){
+        cell.classList.add('cal-clickable');
+        cell.addEventListener('click', () => showDayDetail(key, dateObj, status, detailFn));
+      }
       grid.appendChild(cell);
     }
 
@@ -1372,13 +1699,51 @@ function createMonthCalendar(ids, hasDataFn){
   return { setup, render };
 }
 
+// Resumen que se muestra al tocar un día del calendario
+function dietDayDetail(day){
+  const lines = [];
+  MEAL_SLOTS.forEach(slot => {
+    const entries = (day && day.mealLog && day.mealLog[slot]) || [];
+    if(entries.length){
+      const txt = entries.map(e => e.name + (e.kcal ? ` (${e.kcal} kcal)` : '')).join(', ');
+      lines.push(`${slot}: ${txt}`);
+    }
+  });
+  const waterMl = (day && day.waterMl) || 0;
+  lines.push(`Agua: ${(waterMl/1000).toFixed(2)}L`);
+  return lines;
+}
+
+function trainingDayDetail(day){
+  const exs = ((day && day.exercises) || []).filter(e => e.count > 0);
+  if(exs.length === 0) return [];
+  return exs.map(e => `${e.name}: ${e.count}`);
+}
+
+function showDayDetail(key, dateObj, status, detailFn){
+  const day = state.days[key];
+  const dateLabel = dateObj.toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
+  const lines = detailFn(day);
+  const message = lines.length
+    ? lines.join('\n')
+    : (status === 'failed' ? 'No hay ningún registro guardado este día.' : 'Aún no has registrado nada hoy.');
+  showModal({
+    title: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1),
+    message,
+    hideCancel: true,
+    confirmText: 'CERRAR'
+  });
+}
+
 const dietCalendar = createMonthCalendar(
   { grid:'calGrid', label:'calMonthLabel', prevBtn:'calPrevBtn', nextBtn:'calNextBtn' },
-  dayHasDietData
+  dayHasDietData,
+  dietDayDetail
 );
 const trainingCalendar = createMonthCalendar(
   { grid:'calGridTraining', label:'calMonthLabelTraining', prevBtn:'calPrevBtnTraining', nextBtn:'calNextBtnTraining' },
-  dayHasTrainingData
+  dayHasTrainingData,
+  trainingDayDetail
 );
 
 function renderMonthCalendar(){ dietCalendar.render(); trainingCalendar.render(); }
@@ -1522,24 +1887,7 @@ async function calcAndShowKcal(){
 
 document.getElementById('calcKcalBtn').addEventListener('click', calcAndShowKcal);
 
-document.getElementById('cameraBtn').addEventListener('click', async () => {
-  const product = await openBarcodeScanner();
-  if(!product) return;
-
-  const slot = await showModal({
-    title: '¿A qué franja lo añadimos?',
-    list: MEAL_SLOTS.map(s => ({ label: s, value: s }))
-  });
-  if(!slot) return;
-
-  if(product.manualFallback){
-    await addMealEntryManual(slot);
-    return;
-  }
-  await addProductToSlot(slot, product);
-});
-
-/* ---------------- SALÓN DE LA FAMA (PINS) ---------------- */
+/* ---------------- MOTIVACIÓN PERSONAL (PINS) ---------------- */
 
 function fileToCompressedDataUrl(file){
   return new Promise((resolve, reject) => {
@@ -1587,7 +1935,8 @@ function renderPins(){
     const node = tpl.content.cloneNode(true);
     const img = node.querySelector('.pin-img');
     img.src = pin.dataUrl;
-    img.alt = pin.caption || 'Pin del Salón de la Fama';
+    img.alt = pin.caption || 'Pin de Motivación Personal';
+    img.addEventListener('click', () => openLightbox(pin));
     node.querySelector('.pin-caption').textContent = pin.caption || pin.date;
     node.querySelector('.pin-remove').addEventListener('click', () => {
       const index = state.pins.findIndex(p => p.id === pin.id);
@@ -1596,7 +1945,7 @@ function renderPins(){
       renderPins();
 
       showUndoToast(
-        'Pin eliminado del Salón de la Fama',
+        'Pin eliminado de Motivación Personal',
         () => {
           state.pins.splice(index, 0, pin);
           renderPins();
@@ -1605,6 +1954,24 @@ function renderPins(){
       );
     });
     grid.appendChild(node);
+  });
+}
+
+function openLightbox(pin){
+  document.getElementById('lightboxImg').src = pin.dataUrl;
+  const caption = document.getElementById('lightboxCaption');
+  caption.textContent = pin.caption || pin.date;
+  document.getElementById('lightboxOverlay').hidden = false;
+}
+
+function closeLightbox(){
+  document.getElementById('lightboxOverlay').hidden = true;
+}
+
+function setupLightbox(){
+  document.getElementById('lightboxCloseBtn').addEventListener('click', closeLightbox);
+  document.getElementById('lightboxOverlay').addEventListener('click', (e) => {
+    if(e.target.id === 'lightboxOverlay') closeLightbox();
   });
 }
 
@@ -1655,18 +2022,38 @@ function renderLogHistory(){
   const allEntries = [];
   Object.keys(state.days).sort().reverse().forEach(dateKey => {
     (state.days[dateKey].logs || []).forEach(entry => {
-      allEntries.push({ date: dateKey, ...entry });
+      allEntries.push({ date: dateKey, entry });
     });
   });
-  allEntries.slice(0, 20).forEach(entry => {
+  allEntries.slice(0, 20).forEach(({ date, entry }) => {
     const div = document.createElement('div');
     div.className = 'log-entry';
     const time = document.createElement('time');
-    time.textContent = `${entry.date} — ${entry.hour}`;
+    time.textContent = `${date} — ${entry.hour}`;
     div.appendChild(time);
     const p = document.createElement('span');
     p.textContent = entry.text;
     div.appendChild(p);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'log-entry-remove';
+    removeBtn.textContent = '×';
+    removeBtn.title = 'Eliminar nota';
+    removeBtn.addEventListener('click', () => {
+      const dayLogs = state.days[date] && state.days[date].logs;
+      if(!dayLogs) return;
+      const idx = dayLogs.indexOf(entry);
+      if(idx === -1) return;
+      dayLogs.splice(idx, 1);
+      renderLogHistory();
+      showUndoToast(
+        'Nota de bitácora eliminada',
+        () => { dayLogs.splice(idx, 0, entry); renderLogHistory(); },
+        () => { saveData(state); }
+      );
+    });
+    div.appendChild(removeBtn);
+
     container.appendChild(div);
   });
 }
@@ -1676,7 +2063,7 @@ document.getElementById('saveNoteBtn').addEventListener('click', () => {
   const text = textarea.value.trim();
   if(!text) return;
   if(!today.logs) today.logs = [];
-  today.logs.unshift({ text, hour: nowStamp() });
+  today.logs.unshift({ id: Date.now().toString(36), text, hour: nowStamp() });
   saveData(state);
   textarea.value = '';
   const flag = document.getElementById('saveFlag');
@@ -1687,6 +2074,8 @@ document.getElementById('saveNoteBtn').addEventListener('click', () => {
 });
 
 /* ---------------- SWIPE ENTRE PANTALLAS (WAYNE PROTOCOL <-> MODO DIETA) ---------------- */
+
+let wayneGoToScreen = null; // se rellena en setupSwipe(); lo usa la Bottom Hot Bar
 
 function setupSwipe(){
   const viewport = document.getElementById('appViewport');
@@ -1716,6 +2105,7 @@ function setupSwipe(){
       void track.offsetHeight; // fuerza reflow antes de recuperar la transición
       track.style.transition = '';
     }
+    updateHotBarActiveState(screenName);
   }
 
   function onPointerDown(e){
@@ -1768,18 +2158,158 @@ function setupSwipe(){
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerUp);
 
-  document.getElementById('peekToDiet').addEventListener('click', () => snapTo('diet'));
-  document.getElementById('peekToMain').addEventListener('click', () => snapTo('main'));
-
   window.addEventListener('resize', () => snapTo(activeScreen, false));
 
+  wayneGoToScreen = snapTo;
   snapTo('main', false);
+}
+
+/* ---------------- BOTTOM HOT BAR ---------------- */
+
+function updateHotBarActiveState(screenName){
+  document.querySelectorAll('.hot-btn[data-target]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.target === screenName);
+  });
+}
+
+function setupHotBar(){
+  document.getElementById('hotTrainingBtn').addEventListener('click', () => {
+    closeSheet('profileOverlay');
+    closeSheet('socialOverlay');
+    if(wayneGoToScreen) wayneGoToScreen('main');
+  });
+
+  document.getElementById('hotDietBtn').addEventListener('click', () => {
+    closeSheet('profileOverlay');
+    closeSheet('socialOverlay');
+    if(wayneGoToScreen) wayneGoToScreen('diet');
+  });
+
+  document.getElementById('hotSocialBtn').addEventListener('click', () => openSheet('socialOverlay'));
+  document.getElementById('hotProfileBtn').addEventListener('click', () => openSheet('profileOverlay'));
+
+  document.getElementById('hotPlusBtn').addEventListener('click', openQuickAddMenu);
+
+  updateHotBarActiveState('main');
+}
+
+async function openQuickAddMenu(){
+  const choice = await showModal({
+    title: 'Añadir rápido',
+    list: [
+      { label: '✅ Protocolo diario', value: 'habit' },
+      { label: '🏋️ Ejercicio', value: 'exercise' },
+      { label: '🍽️ Comida', value: 'meal' },
+      { label: '📌 Pin a Motivación Personal', value: 'pin' }
+    ]
+  });
+  if(!choice) return;
+
+  if(choice === 'habit'){
+    document.getElementById('addHabitBtn').click();
+  } else if(choice === 'exercise'){
+    if(wayneGoToScreen) wayneGoToScreen('main');
+    document.getElementById('addExerciseBtn').click();
+  } else if(choice === 'meal'){
+    if(wayneGoToScreen) wayneGoToScreen('diet');
+    const slot = await showModal({
+      title: '¿A qué franja?',
+      list: MEAL_SLOTS.map(s => ({ label: s, value: s }))
+    });
+    if(slot) addMealEntry(slot);
+  } else if(choice === 'pin'){
+    if(wayneGoToScreen) wayneGoToScreen('main');
+    document.getElementById('addPinBtn').click();
+  }
+}
+
+function openSheet(id){
+  if(id === 'profileOverlay') renderProfileSheet();
+  document.getElementById(id).hidden = false;
+}
+
+function closeSheet(id){
+  document.getElementById(id).hidden = true;
+}
+
+/* ---------------- PERFIL DE INVITADO (100% local, sin servidor) ----------------
+   No hay backend: esto NO es una cuenta real ni es visible por nadie más.
+   Es solo una identidad local con foto y @handle aleatorio, pensada como
+   cimiento para un futuro sistema de perfiles/Social de verdad. */
+
+const HANDLE_ADJECTIVES = ['dark','night','shadow','silent','stone','iron','steel','swift','grim','quiet'];
+const HANDLE_NOUNS = ['knight','wing','bat','falcon','wayne','gotham','vigil','raven','ghost','sentinel'];
+
+function generateRandomHandle(){
+  const a = HANDLE_ADJECTIVES[Math.floor(Math.random() * HANDLE_ADJECTIVES.length)];
+  const n = HANDLE_NOUNS[Math.floor(Math.random() * HANDLE_NOUNS.length)];
+  const num = Math.floor(Math.random() * 900 + 100);
+  return `@${a}_${n}${num}`;
+}
+
+function ensureGuestProfile(){
+  if(!state.profileMeta){
+    state.profileMeta = {
+      handle: generateRandomHandle(),
+      avatarDataUrl: null
+    };
+    saveData(state);
+  }
+}
+
+function renderProfileSheet(){
+  ensureGuestProfile();
+  document.getElementById('profileHandle').textContent = state.profileMeta.handle;
+  document.getElementById('profileAvatarImg').src = state.profileMeta.avatarDataUrl || 'icon.svg';
+
+  document.getElementById('profileStatDay').textContent =
+    document.getElementById('dayCounter').textContent.replace('DÍA ', '').replace(/^0+/, '') || '1';
+  document.getElementById('profileStatStreak').textContent =
+    (document.getElementById('streakText').textContent.match(/\d+/) || ['0'])[0];
+  document.getElementById('profileStatPins').textContent = (state.pins || []).length;
+}
+
+function setupProfileSheet(){
+  document.getElementById('profileCloseBtn').addEventListener('click', () => closeSheet('profileOverlay'));
+  document.getElementById('socialCloseBtn').addEventListener('click', () => closeSheet('socialOverlay'));
+
+  document.getElementById('profileAvatarEditBtn').addEventListener('click', () => {
+    document.getElementById('profileAvatarInput').click();
+  });
+
+  document.getElementById('profileAvatarInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    try{
+      const dataUrl = await fileToCompressedDataUrl(file);
+      ensureGuestProfile();
+      state.profileMeta.avatarDataUrl = dataUrl;
+      saveData(state);
+      document.getElementById('profileAvatarImg').src = dataUrl;
+    }catch(err){
+      await showModal({
+        title: 'No se pudo cambiar la foto',
+        message: 'Prueba con otra imagen.',
+        hideCancel: true, confirmText: 'ENTENDIDO'
+      });
+    }
+    e.target.value = '';
+  });
+
+  document.getElementById('profileGoogleBtn').addEventListener('click', async () => {
+    await showModal({
+      title: '🔗 Vincular con Google',
+      message: 'Todavía no está activo. Cuando lo esté, te pedirá permiso explícito para usar tu foto de perfil de Google y te dejará elegir tu propio @ (si está disponible) — y te preguntará claramente si quieres recibir correos sobre la app o no.',
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+  });
 }
 
 /* ---------------- COPIA DE SEGURIDAD (EXPORTAR / IMPORTAR) ---------------- */
 
 function setupBackup(){
   document.getElementById('permissionsBtn').addEventListener('click', openPermissionsMenu);
+
 
   document.getElementById('exportBtn').addEventListener('click', () => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -1859,7 +2389,7 @@ function setupBackup(){
 
 /* ---------------- PERMISOS: NOTIFICACIONES, CÁMARA Y GALERÍA ----------------
    En la web no existe un permiso de "galería" independiente: el selector de
-   archivos (el mismo que ya usa el Salón de la Fama) no requiere ningún
+   archivos (el mismo que ya usa Motivación Personal) no requiere ningún
    permiso especial, el navegador lo gestiona solo. Por honestidad se lo
    explicamos así al usuario en vez de simular un permiso que no existe. */
 
@@ -1955,7 +2485,7 @@ async function requestCameraPermission(){
 async function explainGalleryAccess(){
   await showModal({
     title: '🖼️ Galería',
-    message: 'En un navegador web no existe un permiso de "galería" aparte: al pulsar "+" en el Salón de la Fama, el propio sistema te enseña tu carpeta de fotos sin pedir nada extra. Aquí no hay nada que activar.',
+    message: 'En un navegador web no existe un permiso de "galería" aparte: al pulsar "+" en Motivación Personal, el propio sistema te enseña tu carpeta de fotos sin pedir nada extra. Aquí no hay nada que activar.',
     hideCancel: true, confirmText: 'ENTENDIDO'
   });
 }
@@ -2180,6 +2710,7 @@ function renderAll(){
   renderHabits();
   renderExercises();
   renderMealSlots();
+  renderPacks();
   renderWaterDiet();
   updateKcalSummary();
   updateDietStatusTheme();
@@ -2190,6 +2721,7 @@ function renderAll(){
   renderPins();
   updateTrainingTotal();
   updateTrainingStreak();
+  renderTrainingWeekChart();
   updateRadar();
   updateDayCounter();
   updateStreak();
@@ -2197,9 +2729,13 @@ function renderAll(){
 }
 
 setupModalSystem();
+setupCelebration();
+setupLightbox();
 setupUndoToast();
 setupHiddenReset();
 setupSwipe();
+setupHotBar();
+setupProfileSheet();
 setupBackup();
 setupMonthCalendar();
 setupOfflineIndicator();
@@ -2209,17 +2745,23 @@ maybeSendReminder();
 setInterval(tickClock, 1000);
 setTimeout(runOnboarding, 800);
 
-/* ---------------- TEMAS OCULTOS: BATGIRL Y ELITE ---------------- */
+/* ---------------- TEMAS OCULTOS: BATGIRL Y YMIR ---------------- */
 
 const THEME_KEY = 'wayneProtocolTheme';
 
 function applyTheme(theme){
   document.body.classList.toggle('theme-batgirl', theme === 'batgirl');
-  document.body.classList.toggle('theme-elite', theme === 'elite');
+  document.body.classList.toggle('theme-ymir', theme === 'ymir');
 }
 
 (function initTheme(){
-  const saved = localStorage.getItem(THEME_KEY) || 'default';
+  let saved = localStorage.getItem(THEME_KEY) || 'default';
+  // migración silenciosa: quien ya hubiera activado el antiguo tema "elite"
+  // (renombrado a "ymir") no pierde su elección al actualizar.
+  if(saved === 'elite'){
+    saved = 'ymir';
+    localStorage.setItem(THEME_KEY, saved);
+  }
   applyTheme(saved);
 })();
 
@@ -2247,7 +2789,7 @@ function setupHiddenThemeTrigger(elementId, themeName){
 }
 
 setupHiddenThemeTrigger('batgirlTrigger', 'batgirl');
-setupHiddenThemeTrigger('eliteTrigger', 'elite');
+setupHiddenThemeTrigger('ymirTrigger', 'ymir');
 
 /* ---------------- SERVICE WORKER (PWA offline) ---------------- */
 if('serviceWorker' in navigator){
