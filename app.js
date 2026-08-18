@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v2.1 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v2.0 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -25,7 +25,7 @@ const DEFAULT_EXERCISES = [
 const MEAL_SLOTS = ['DESAYUNO', 'ALMUERZO', 'CENA', 'SNACKS'];
 const WATER_GOAL_ML = 2000;
 const WATER_STEP_ML = 250;
-const WEEK_SUCCESS_THRESHOLD = 85; // % mínimo por día para contar como "día de éxito"
+const WEEK_SUCCESS_THRESHOLD = 70; // % mínimo por día para contar como "día de éxito"
 const WEEK_SUCCESS_DAYS_NEEDED = 4; // días de éxito necesarios para ganar la racha dorada
 const DAY_LABELS = ['L','M','X','J','V','S','D'];
 
@@ -74,6 +74,8 @@ function freshState(){
     pins: [],
     mealPacks: [],
     exercisePRs: {},
+    exercisePacks: [],
+    exerciseLastSet: {},
     profileMeta: null,
     days: {}
   };
@@ -107,6 +109,8 @@ function loadData(){
   if(!data.pins) data.pins = [];
   if(!data.mealPacks) data.mealPacks = [];
   if(!data.exercisePRs) data.exercisePRs = {};
+  if(!data.exercisePacks) data.exercisePacks = [];
+  if(!data.exerciseLastSet) data.exerciseLastSet = {};
   if(!data.profileMeta) data.profileMeta = null; // se genera solo al abrir Perfil por primera vez
   if(!data.days) data.days = {};
   if(!data.startDate) data.startDate = todayKey();
@@ -845,6 +849,7 @@ function renderExercises(){
       trainingCalendar.render();
       renderTrainingWeekChart();
     });
+    node.querySelector('.ex-session-btn').addEventListener('click', () => openWorkoutSession(idx));
     node.querySelector('.minus').addEventListener('click', () => {
       today.exercises[idx].count = Math.max(0, today.exercises[idx].count - 1);
       saveData(state);
@@ -884,6 +889,245 @@ function dayTrainingVolume(day){
   if(!day || !day.exercises) return 0;
   return day.exercises.reduce((sum, e) => sum + e.count, 0);
 }
+
+/* ---------------- SESIÓN DE ENTRENAMIENTO (series / peso / reps) ----------------
+   Capa adicional sobre el contador simple +/-: aquí se registran series con
+   peso y repeticiones concretas, cada una con un tick para marcarla como
+   hecha. En cuanto una serie tiene el tick puesto, el contador rápido de la
+   fila se recalcula automáticamente sumando las reps de las series marcadas,
+   así ambos sistemas quedan sincronizados sin pisarse. El último peso/reps
+   usados de cada ejercicio se recuerdan de una sesión a otra (no "se
+   reinician"), aunque las repeticiones de HOY siempre empiezan en 0 al
+   cambiar de día, que es lo correcto. */
+
+let sessionExerciseIndex = null;
+
+function recomputeExerciseCountFromSets(idx){
+  const ex = today.exercises[idx];
+  if(!ex || !ex.sets || ex.sets.length === 0) return; // sin series: no tocar el contador manual
+  const total = ex.sets.filter(s => s.done).reduce((sum, s) => sum + (s.reps || 0), 0);
+  ex.count = total;
+  checkAndUpdatePR(ex.name, ex.count);
+}
+
+function openWorkoutSession(idx){
+  sessionExerciseIndex = idx;
+  const ex = today.exercises[idx];
+  if(!ex.sets) ex.sets = [];
+  document.getElementById('sessionExerciseName').textContent = ex.name;
+  renderSessionSets();
+  document.getElementById('sessionOverlay').hidden = false;
+}
+
+function closeWorkoutSession(){
+  document.getElementById('sessionOverlay').hidden = true;
+  sessionExerciseIndex = null;
+}
+
+function renderSessionSets(){
+  if(sessionExerciseIndex === null) return;
+  const ex = today.exercises[sessionExerciseIndex];
+  if(!ex) return;
+  const list = document.getElementById('sessionSetList');
+  const tpl = document.getElementById('sessionSetRowTpl');
+  list.innerHTML = '';
+
+  if(!ex.sets || ex.sets.length === 0){
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = 'Todavía no has añadido ninguna serie.';
+    list.appendChild(empty);
+  } else {
+    ex.sets.forEach((set, sIdx) => {
+      const node = tpl.content.cloneNode(true);
+      const row = node.querySelector('.session-set-row');
+      row.classList.toggle('done', !!set.done);
+      node.querySelector('.session-set-num').textContent = `S${sIdx + 1}`;
+      const weightTxt = set.weight ? `${set.weight}kg × ` : '';
+      node.querySelector('.session-set-info').textContent = `${weightTxt}${set.reps} reps`;
+      node.querySelector('.session-set-tick').addEventListener('click', () => {
+        set.done = !set.done;
+        recomputeExerciseCountFromSets(sessionExerciseIndex);
+        saveData(state);
+        renderSessionSets();
+        renderExercises();
+        updateTrainingTotal();
+        updateTrainingStreak();
+        trainingCalendar.render();
+        renderTrainingWeekChart();
+      });
+      node.querySelector('.session-set-remove').addEventListener('click', () => {
+        ex.sets.splice(sIdx, 1);
+        recomputeExerciseCountFromSets(sessionExerciseIndex);
+        saveData(state);
+        renderSessionSets();
+        renderExercises();
+        updateTrainingTotal();
+        trainingCalendar.render();
+        renderTrainingWeekChart();
+      });
+      list.appendChild(node);
+    });
+  }
+
+  const doneReps = (ex.sets || []).filter(s => s.done).reduce((sum, s) => sum + (s.reps || 0), 0);
+  document.getElementById('sessionVolumeText').textContent = `${doneReps} reps completadas hoy (${(ex.sets||[]).filter(s=>s.done).length} series)`;
+}
+
+async function addSessionSet(){
+  if(sessionExerciseIndex === null) return;
+  const ex = today.exercises[sessionExerciseIndex];
+  const last = (state.exerciseLastSet && state.exerciseLastSet[ex.name]) || {};
+
+  const fields = await showModal({
+    title: `Nueva serie — ${ex.name}`,
+    message: 'El peso es opcional (déjalo en blanco para ejercicios con peso corporal).',
+    fields: [
+      { key:'weight', label:'Peso (kg)', placeholder:'Ej. 20', type:'number', inputmode:'decimal', value: last.weight != null ? String(last.weight) : '' },
+      { key:'reps', label:'Repeticiones', placeholder:'Ej. 12', type:'number', inputmode:'decimal', value: last.reps != null ? String(last.reps) : '' }
+    ],
+    confirmText: 'AÑADIR SERIE',
+    cancelText: 'CANCELAR'
+  });
+  if(!fields) return;
+
+  const reps = parseInt(fields.reps) || 0;
+  if(reps <= 0) return;
+  const weight = fields.weight ? (parseFloat(fields.weight.replace(',', '.')) || 0) : 0;
+
+  if(!ex.sets) ex.sets = [];
+  ex.sets.push({ id: Date.now().toString(36), weight, reps, done: false });
+
+  if(!state.exerciseLastSet) state.exerciseLastSet = {};
+  state.exerciseLastSet[ex.name] = { weight, reps };
+
+  saveData(state);
+  renderSessionSets();
+}
+
+function setupWorkoutSession(){
+  document.getElementById('sessionCloseBtn').addEventListener('click', closeWorkoutSession);
+  document.getElementById('sessionOverlay').addEventListener('click', (e) => {
+    if(e.target.id === 'sessionOverlay') closeWorkoutSession();
+  });
+  document.getElementById('sessionAddSetBtn').addEventListener('click', addSessionSet);
+}
+
+/* ---------------- RUTINAS (PACKS DE ENTRENAMIENTO) ----------------
+   Igual que los packs de comida: guarda una rutina (lista de ejercicios)
+   una vez y añádela entera a la lista de hoy con un toque. Las reps de cada
+   ejercicio siempre empiezan en 0 ese día — lo que se "recuerda" es la
+   lista de ejercicios y, gracias al sistema de series, el último peso/reps
+   usados de cada uno. */
+
+function renderTrainingPacks(){
+  const container = document.getElementById('trainingPackList');
+  if(!container) return;
+  const tpl = document.getElementById('trainingPackItemTpl');
+  container.innerHTML = '';
+
+  if(!state.exercisePacks || state.exercisePacks.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'pack-empty';
+    empty.textContent = 'Aún no tienes rutinas guardadas.';
+    container.appendChild(empty);
+    return;
+  }
+
+  state.exercisePacks.forEach(pack => {
+    const node = tpl.content.cloneNode(true);
+    node.querySelector('.pack-item-name').textContent = pack.name;
+    node.querySelector('.pack-item-contents').textContent = pack.items.join(' · ');
+
+    node.querySelector('.pack-add-btn').addEventListener('click', () => addTrainingPackToToday(pack));
+
+    node.querySelector('.pack-remove').addEventListener('click', () => {
+      const index = state.exercisePacks.findIndex(p => p.id === pack.id);
+      if(index === -1) return;
+      state.exercisePacks.splice(index, 1);
+      renderTrainingPacks();
+      showUndoToast(
+        `Rutina "${pack.name}" eliminada`,
+        () => { state.exercisePacks.splice(index, 0, pack); renderTrainingPacks(); },
+        () => { saveData(state); }
+      );
+    });
+
+    container.appendChild(node);
+  });
+}
+
+function addTrainingPackToToday(pack){
+  const existingNames = today.exercises.map(e => e.name.toUpperCase());
+  let added = 0;
+  pack.items.forEach(name => {
+    if(!existingNames.includes(name.toUpperCase())){
+      today.exercises.push({ name, count: 0 });
+      existingNames.push(name.toUpperCase());
+      added++;
+    }
+  });
+  saveData(state);
+  renderExercises();
+  updateTrainingTotal();
+  updateTrainingStreak();
+  trainingCalendar.render();
+  renderTrainingWeekChart();
+
+  showModal({
+    title: 'Rutina añadida',
+    message: added > 0
+      ? `Se añadieron ${added} ejercicio${added===1?'':'s'} de "${pack.name}" a hoy. Los que ya tenías en la lista no se han duplicado.`
+      : `Todos los ejercicios de "${pack.name}" ya estaban en tu lista de hoy.`,
+    hideCancel: true, confirmText: 'ENTENDIDO'
+  });
+}
+
+async function createTrainingPackFlow(){
+  const name = await showModal({
+    title: 'Nueva rutina',
+    message: 'Ej. "Push Day", "Piernas fuego"...',
+    input: true,
+    placeholder: 'Nombre de la rutina',
+    confirmText: 'SIGUIENTE'
+  });
+  if(!name) return;
+
+  const items = [];
+  let addingMore = true;
+
+  while(addingMore){
+    const exName = await showModal({
+      title: items.length === 0 ? 'Primer ejercicio' : `Ejercicio ${items.length + 1}`,
+      input: true,
+      placeholder: 'Ej. SENTADILLAS',
+      confirmText: 'AÑADIR',
+      cancelText: items.length === 0 ? 'CANCELAR' : 'TERMINAR RUTINA'
+    });
+    if(!exName){
+      if(items.length === 0) return;
+      break;
+    }
+    items.push(exName.toUpperCase());
+
+    const continueChoice = await showModal({
+      title: `Rutina "${name}" — ${items.length} ejercicio${items.length===1?'':'s'}`,
+      list: [
+        { label: '➕ Añadir otro ejercicio', value: 'more' },
+        { label: '✅ Terminar y guardar rutina', value: 'done' }
+      ]
+    });
+    addingMore = continueChoice === 'more';
+    if(!continueChoice) break;
+  }
+
+  if(items.length === 0) return;
+  state.exercisePacks.push({ id: Date.now().toString(36), name, items });
+  saveData(state);
+  renderTrainingPacks();
+}
+
+document.getElementById('addTrainingPackBtn').addEventListener('click', createTrainingPackFlow);
 
 function renderTrainingWeekChart(){
   const container = document.getElementById('trainingWeekChart');
@@ -2267,6 +2511,74 @@ function renderProfileSheet(){
   document.getElementById('profileStatStreak').textContent =
     (document.getElementById('streakText').textContent.match(/\d+/) || ['0'])[0];
   document.getElementById('profileStatPins').textContent = (state.pins || []).length;
+
+  renderProfileSummary();
+  renderPins();
+}
+
+// Resumen a largo plazo: recorre TODO el historial guardado (no solo la
+// semana actual) para dar una foto de cómo vas con perspectiva de tiempo.
+function computeLongTermStats(){
+  const dayKeys = Object.keys(state.days).sort();
+  const totalDaysActive = dayKeys.filter(k => {
+    const d = state.days[k];
+    return habitDayComplete(d) || dayTrainingVolume(d) > 0 || dayHasDietData(d);
+  }).length;
+
+  let bestHabitStreak = 0, curHabit = 0;
+  let bestTrainingStreak = 0, curTraining = 0;
+  let totalWorkouts = 0;
+  let habitPctSum = 0, habitPctCount = 0;
+
+  dayKeys.forEach(key => {
+    const day = state.days[key];
+    if(habitDayComplete(day)){ curHabit++; bestHabitStreak = Math.max(bestHabitStreak, curHabit); }
+    else { curHabit = 0; }
+
+    const vol = dayTrainingVolume(day);
+    if(vol > 0){ curTraining++; bestTrainingStreak = Math.max(bestTrainingStreak, curTraining); totalWorkouts++; }
+    else { curTraining = 0; }
+
+    const pct = habitPercentForDay(day);
+    if(pct !== null){ habitPctSum += pct; habitPctCount++; }
+  });
+
+  const avgHabitPct = habitPctCount ? Math.round(habitPctSum / habitPctCount) : 0;
+
+  return {
+    memberSince: state.startDate,
+    totalDaysActive,
+    bestHabitStreak,
+    bestTrainingStreak,
+    totalWorkouts,
+    avgHabitPct
+  };
+}
+
+function renderProfileSummary(){
+  const grid = document.getElementById('profileSummaryGrid');
+  if(!grid) return;
+  const s = computeLongTermStats();
+  const chips = [
+    { label: 'MIEMBRO DESDE', value: s.memberSince },
+    { label: 'DÍAS ACTIVOS', value: s.totalDaysActive },
+    { label: 'MEJOR RACHA HÁBITOS', value: `${s.bestHabitStreak} días` },
+    { label: 'MEJOR RACHA ENTRENO', value: `${s.bestTrainingStreak} días` },
+    { label: 'ENTRENAMIENTOS TOTALES', value: s.totalWorkouts },
+    { label: 'MEDIA DE HÁBITOS', value: `${s.avgHabitPct}%` }
+  ];
+  grid.innerHTML = '';
+  chips.forEach(c => {
+    const chip = document.createElement('div');
+    chip.className = 'profile-summary-chip';
+    const span = document.createElement('span');
+    span.textContent = c.label;
+    const strong = document.createElement('strong');
+    strong.textContent = c.value;
+    chip.appendChild(span);
+    chip.appendChild(strong);
+    grid.appendChild(chip);
+  });
 }
 
 function setupProfileSheet(){
@@ -2504,39 +2816,14 @@ async function openPermissionsMenu(){
     message: '¿Qué quieres revisar?',
     list: [
       { label: '🔔 Notificaciones', value: 'notif' },
-      { label: '🧪 Probar notificación ahora', value: 'test' },
       { label: '📷 Cámara', value: 'camera' },
       { label: '🖼️ Galería (info)', value: 'gallery' }
     ]
   });
   if(!choice) return;
   if(choice === 'notif') await requestNotificationPermission(true);
-  else if(choice === 'test') await sendTestNotification();
   else if(choice === 'camera') await requestCameraPermission();
   else if(choice === 'gallery') await explainGalleryAccess();
-}
-
-async function sendTestNotification(){
-  if(!('Notification' in window)){
-    await showModal({ title:'Sin soporte', message:'Este navegador no soporta notificaciones.', hideCancel:true, confirmText:'ENTENDIDO' });
-    return;
-  }
-  if(Notification.permission !== 'granted'){
-    await showModal({
-      title:'Todavía no están activadas',
-      message:'Activa antes las notificaciones desde "🔔 Notificaciones" en este mismo menú.',
-      hideCancel:true, confirmText:'ENTENDIDO'
-    });
-    return;
-  }
-  const ok = await fireReminderNotification('Alfred', 'Esto es una notificación de prueba del Wayne Protocol. Si la ves, todo funciona correctamente.');
-  await showModal({
-    title: ok ? '🧪 Enviada' : '🧪 No se pudo enviar',
-    message: ok
-      ? 'Si no la has visto aparecer, revisa que el sistema operativo no tenga las notificaciones del navegador silenciadas (fuera de la app, en los ajustes del propio teléfono).'
-      : 'Ha fallado el envío. Repasa el permiso de notificaciones en los ajustes del navegador y vuelve a intentarlo.',
-    hideCancel: true, confirmText: 'ENTENDIDO'
-  });
 }
 
 // Best-effort: la Periodic Background Sync API solo existe en Chrome/Android
@@ -2709,6 +2996,7 @@ function setupHiddenReset(){
 function renderAll(){
   renderHabits();
   renderExercises();
+  renderTrainingPacks();
   renderMealSlots();
   renderPacks();
   renderWaterDiet();
@@ -2736,6 +3024,7 @@ setupHiddenReset();
 setupSwipe();
 setupHotBar();
 setupProfileSheet();
+setupWorkoutSession();
 setupBackup();
 setupMonthCalendar();
 setupOfflineIndicator();

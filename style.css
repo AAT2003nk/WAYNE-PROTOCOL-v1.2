@@ -2398,9 +2398,15 @@ body.theme-ymir .scanner-close{
 }
 
 .hot-icon{
-  font-size:18px;
-  filter:grayscale(1);
-  opacity:0.6;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--text-dim);
+  opacity:0.7;
+}
+.hot-icon svg{
+  width:20px;
+  height:20px;
 }
 
 .hot-label{
@@ -2409,7 +2415,7 @@ body.theme-ymir .scanner-close{
 }
 
 .hot-btn.active .hot-icon{
-  filter:none;
+  color:var(--accent);
   opacity:1;
 }
 .hot-btn.active .hot-label{
@@ -2620,4 +2626,128 @@ body.theme-ymir .radar-arc{
 
 #trainingWeekChart{
   margin-bottom:4px;
+}
+
+/* ---------- PERFIL: RESUMEN MENSUAL Y SECCIONES INTERNAS ---------- */
+
+.sheet-card-tall{
+  text-align:left;
+}
+.sheet-card-tall .profile-avatar-wrap,
+.sheet-card-tall .profile-handle,
+.sheet-card-tall .profile-guest-tag,
+.sheet-card-tall .profile-stats{
+  text-align:center;
+}
+
+.profile-section-hint{
+  margin-top:-4px;
+}
+
+.profile-inline-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.profile-summary-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:8px;
+  margin-bottom:6px;
+}
+
+.profile-summary-chip{
+  background:var(--bg-panel-2);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px;
+}
+.profile-summary-chip span{
+  display:block;
+  font-size:8px;
+  letter-spacing:1px;
+  color:var(--text-dim);
+  margin-bottom:2px;
+}
+.profile-summary-chip strong{
+  font-family:var(--font-display);
+  font-size:15px;
+  color:var(--accent);
+}
+
+/* ---------- SESIÓN DE ENTRENAMIENTO (series/peso/reps) ---------- */
+
+.ex-session-btn{
+  background:none;
+  border:1px solid var(--accent-dim);
+  color:var(--accent);
+  width:24px; height:24px;
+  border-radius:50%;
+  font-size:10px;
+  cursor:pointer;
+  flex:0 0 auto;
+}
+.ex-session-btn:active{
+  background:rgba(0,229,199,0.15);
+}
+
+.session-set-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:14px;
+}
+
+.session-set-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:var(--bg-panel-2);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 10px;
+}
+
+.session-set-num{
+  font-family:var(--font-display);
+  font-size:11px;
+  color:var(--text-dim);
+  min-width:20px;
+}
+
+.session-set-info{
+  flex:1;
+  font-size:12px;
+  color:var(--text);
+}
+
+.session-set-tick{
+  width:26px; height:26px;
+  border-radius:50%;
+  border:1px solid var(--line);
+  background:transparent;
+  color:var(--text-dim);
+  font-size:13px;
+  cursor:pointer;
+}
+.session-set-row.done .session-set-tick{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#05080a;
+  box-shadow:0 0 8px rgba(0,229,199,0.6);
+}
+.session-set-row.done .session-set-info{
+  color:var(--accent);
+}
+
+.session-set-remove{
+  background:none;
+  border:none;
+  color:var(--text-dim);
+  font-size:15px;
+  cursor:pointer;
+  padding:0 2px;
 }

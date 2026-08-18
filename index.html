@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<title>WAYNE PROTOCOL v2.1</title>
+<title>WAYNE PROTOCOL v2.0</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -308,6 +308,11 @@
             <strong id="trainingStreak">0 días</strong>
           </div>
 
+          <div class="cal-divider"><span>MIS RUTINAS</span></div>
+          <p class="hint">Guarda una rutina completa una vez y añádela entera con un toque, igual que los packs de comida.</p>
+          <div class="pack-list" id="trainingPackList"></div>
+          <button class="btn-ghost full" id="addTrainingPackBtn" style="margin-top:8px;">+ CREAR RUTINA</button>
+
           <div class="cal-divider"><span>VOLUMEN SEMANAL</span></div>
           <div class="week-chart" id="trainingWeekChart"></div>
 
@@ -337,30 +342,6 @@
           <div class="log-history" id="logHistory"></div>
         </section>
 
-        <!-- MOTIVACIÓN PERSONAL -->
-        <section class="panel" id="panel-pins">
-          <div class="panel-head">
-            <h2>MOTIVACIÓN PERSONAL <span class="panel-eyebrow">// PINS</span></h2>
-            <button class="icon-btn" id="addPinBtn" title="Añadir pin">+</button>
-          </div>
-          <p class="hint">Fotos y recuerdos que te recuerdan por qué empezaste. Se guardan solo en este dispositivo.</p>
-          <div class="pin-grid" id="pinGrid"></div>
-          <input type="file" id="pinFileInput" accept="image/*" hidden>
-        </section>
-
-        <!-- COPIA DE SEGURIDAD -->
-        <section class="panel panel-compact" id="panel-backup">
-          <div class="backup-row">
-            <span class="backup-label">COPIA DE SEGURIDAD LOCAL</span>
-            <div class="backup-actions">
-              <button class="backup-btn" id="exportBtn" title="Exportar todos tus datos a un archivo">EXPORTAR</button>
-              <button class="backup-btn" id="importBtn" title="Restaurar datos desde un archivo">IMPORTAR</button>
-              <button class="backup-btn" id="permissionsBtn" title="Revisar permisos de la app">PERMISOS</button>
-            </div>
-          </div>
-          <input type="file" id="importFileInput" accept="application/json,.json" hidden>
-        </section>
-
         <footer class="foot">
           <span>WAYNE ENTERPRISES // USO EXCLUSIVO</span>
           <button class="bat-trigger" id="batTriggerBtn" title=" " aria-label="icono">
@@ -385,29 +366,37 @@
 <!-- BOTTOM HOT BAR -->
 <nav class="hot-bar" id="hotBar">
   <button class="hot-btn" id="hotSocialBtn" data-target="social">
-    <span class="hot-icon">👥</span>
+    <span class="hot-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="2.6"/><path d="M3.5 19c.3-3 2.6-5 5.5-5s5.2 2 5.5 5"/><circle cx="17" cy="9" r="2.1"/><path d="M14.7 14.3c1.8.3 3.1 1.8 3.3 3.7"/></svg>
+    </span>
     <span class="hot-label">Social</span>
   </button>
-  <button class="hot-btn" id="hotTrainingBtn" data-target="main">
-    <span class="hot-icon">🏋️</span>
-    <span class="hot-label">Entreno</span>
+  <button class="hot-btn" id="hotDietBtn" data-target="diet">
+    <span class="hot-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v6a1.8 1.8 0 0 0 3.6 0V3"/><path d="M8.8 9v12"/><path d="M16 3c-1.4 0-2.2 1.9-2.2 4.2S14.6 11 16 11v10"/></svg>
+    </span>
+    <span class="hot-label">Dietas</span>
   </button>
   <button class="hot-btn hot-btn-plus" id="hotPlusBtn">
     <span class="hot-plus-icon">+</span>
   </button>
-  <button class="hot-btn" id="hotDietBtn" data-target="diet">
-    <span class="hot-icon">🍽️</span>
-    <span class="hot-label">Dietas</span>
+  <button class="hot-btn" id="hotTrainingBtn" data-target="main">
+    <span class="hot-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9.5" width="3" height="5" rx="1"/><rect x="18.5" y="9.5" width="3" height="5" rx="1"/><path d="M5.5 12h1.8M16.7 12h1.8"/><rect x="7.3" y="8" width="2.4" height="8" rx="1"/><rect x="14.3" y="8" width="2.4" height="8" rx="1"/></svg>
+    </span>
+    <span class="hot-label">Entreno</span>
   </button>
   <button class="hot-btn" id="hotProfileBtn" data-target="profile">
-    <span class="hot-icon">👤</span>
+    <span class="hot-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.3"/><path d="M5 20c0-3.6 3.1-6.2 7-6.2s7 2.6 7 6.2"/></svg>
+    </span>
     <span class="hot-label">Perfil</span>
   </button>
 </nav>
 
 <!-- PANTALLA DE PERFIL (invitado) -->
 <div class="sheet-overlay" id="profileOverlay" hidden>
-  <div class="sheet-card">
+  <div class="sheet-card sheet-card-tall">
     <button class="sheet-close" id="profileCloseBtn">✕</button>
     <div class="profile-avatar-wrap">
       <img class="profile-avatar" id="profileAvatarImg" src="icon.svg" alt="Avatar">
@@ -432,7 +421,33 @@
       </div>
     </div>
 
-    <button class="btn-ghost full" id="profileGoogleBtn">🔗 Vincular con Google</button>
+    <!-- RESUMEN MENSUAL -->
+    <div class="profile-divider"><span>📈 RESUMEN A LARGO PLAZO</span></div>
+    <p class="hint profile-section-hint">Mira aquí tienes algo detallado a largo plazo para que veas lo bien que vas.</p>
+    <div class="profile-summary-grid" id="profileSummaryGrid"></div>
+
+    <!-- MOTIVACIÓN PERSONAL -->
+    <div class="profile-divider"><span>📌 MOTIVACIÓN PERSONAL</span></div>
+    <div class="panel-head profile-inline-head">
+      <p class="hint" style="margin:0;">Fotos y recuerdos que te recuerdan por qué empezaste.</p>
+      <button class="icon-btn" id="addPinBtn" title="Añadir pin">+</button>
+    </div>
+    <div class="pin-grid" id="pinGrid"></div>
+    <input type="file" id="pinFileInput" accept="image/*" hidden>
+
+    <!-- AJUSTES -->
+    <div class="profile-divider"><span>⚙️ AJUSTES</span></div>
+    <div class="backup-row">
+      <span class="backup-label">COPIA DE SEGURIDAD LOCAL</span>
+      <div class="backup-actions">
+        <button class="backup-btn" id="exportBtn" title="Exportar todos tus datos a un archivo">EXPORTAR</button>
+        <button class="backup-btn" id="importBtn" title="Restaurar datos desde un archivo">IMPORTAR</button>
+        <button class="backup-btn" id="permissionsBtn" title="Revisar permisos de la app">PERMISOS</button>
+      </div>
+    </div>
+    <input type="file" id="importFileInput" accept="application/json,.json" hidden>
+
+    <button class="btn-ghost full" id="profileGoogleBtn" style="margin-top:14px;">🔗 Vincular con Google</button>
     <p class="hint">Próximamente: iniciar sesión con Google para usar tu foto real y elegir tu propio @, con permiso explícito para correos. De momento tu cuenta es 100% local y anónima.</p>
   </div>
 </div>
@@ -465,6 +480,7 @@
   <div class="exercise-row">
     <span class="ex-name"></span>
     <span class="ex-pr" hidden>🏆 PR</span>
+    <button class="ex-session-btn" title="Registrar series">▶</button>
     <div class="ex-controls">
       <button class="ex-btn minus">−</button>
       <span class="ex-count">0</span>
@@ -485,6 +501,28 @@
       <button class="btn-ghost pack-add-btn">AÑADIR A...</button>
       <button class="pack-remove">×</button>
     </div>
+  </div>
+</template>
+
+<template id="trainingPackItemTpl">
+  <div class="pack-item">
+    <div class="pack-item-head">
+      <span class="pack-item-name"></span>
+    </div>
+    <p class="pack-item-contents"></p>
+    <div class="pack-item-actions">
+      <button class="btn-ghost pack-add-btn">AÑADIR A HOY</button>
+      <button class="pack-remove">×</button>
+    </div>
+  </div>
+</template>
+
+<template id="sessionSetRowTpl">
+  <div class="session-set-row">
+    <span class="session-set-num"></span>
+    <span class="session-set-info"></span>
+    <button class="session-set-tick">✓</button>
+    <button class="session-set-remove">×</button>
   </div>
 </template>
 
@@ -532,6 +570,19 @@
   <button class="lightbox-close" id="lightboxCloseBtn">✕</button>
   <img class="lightbox-img" id="lightboxImg" src="" alt="">
   <div class="lightbox-caption" id="lightboxCaption"></div>
+</div>
+
+<!-- SESIÓN DE ENTRENAMIENTO (series / peso / reps) -->
+<div class="sheet-overlay" id="sessionOverlay" hidden>
+  <div class="sheet-card sheet-card-tall">
+    <button class="sheet-close" id="sessionCloseBtn">✕</button>
+    <h3 class="profile-handle" id="sessionExerciseName">EJERCICIO</h3>
+    <p class="profile-guest-tag" id="sessionVolumeText">0 reps completadas hoy</p>
+
+    <div class="session-set-list" id="sessionSetList"></div>
+
+    <button class="btn-ghost full" id="sessionAddSetBtn" style="margin-top:10px;">+ AÑADIR SERIE</button>
+  </div>
 </div>
 
 <!-- ESCÁNER DE CÓDIGO DE BARRAS -->

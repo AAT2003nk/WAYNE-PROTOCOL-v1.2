@@ -1,8 +1,9 @@
-# WAYNE PROTOCOL v2.1
+# WAYNE PROTOCOL v2.0
 
-Bat-terminal personal: hábitos diarios, entrenamiento, dieta con macros, bitácora, Motivación Personal (fotos) y perfil de invitado — todo local, sin servidor, sin cuentas reales (todavía).
+Bat-terminal personal: hábitos diarios, entrenamiento con series/peso/reps y rutinas, dieta con macros y packs, bitácora, perfil de invitado con resumen a largo plazo — todo local, sin servidor, sin cuentas reales (todavía).
 
 > Este archivo se llamaba `LEEME.md`. A partir de esta versión pasa a llamarse `README.md`.
+> Nota de control de versiones: la numeración se corrigió aquí — esta es la v2.0 real.
 
 ## Archivos del proyecto
 - `index.html` — estructura de la app (dos pantallas: Wayne Protocol + Modo Dieta, más las pantallas superpuestas de Perfil/Social)
@@ -19,31 +20,27 @@ Bat-terminal personal: hábitos diarios, entrenamiento, dieta con macros, bitác
 
 ## Qué hay en v2.0
 
-### 🍽️ Nutrición
-- **Packs de comida**: guarda una comida completa (varios alimentos con kcal/macros) una sola vez y añádela entera a cualquier franja con un toque. También puedes convertir lo que ya registraste hoy en una franja en un pack con el botón 💾.
-- Registro de comidas con búsqueda automática (Open Food Facts) o escáner de código de barras — **el escáner ya no tiene un panel aparte**, vive integrado dentro de "añadir comida" para no duplicar el mismo botón dos veces.
-- Macros (proteína/carbohidratos/grasas) por alimento y resumen diario.
-- Calculadora de objetivo calórico (BMR/TDEE, Mifflin-St Jeor).
-- Calendario de adherencia mensual — **toca cualquier día** para ver un resumen de qué comiste y cuánta agua bebiste ese día.
-- El panel entero cambia de color (verde si vas bien, rojo si llevas 2+ días sin registrar nada).
+### 🏋️ Entrenamiento (a fondo esta vez)
+- **Sesión de entrenamiento real**: botón ▶ en cada ejercicio abre un registro de series con peso (kg), repeticiones y un tick para marcar cada serie como hecha. El contador rápido de la fila se recalcula solo a partir de las series marcadas, así no hay dos sistemas peleándose entre sí.
+- **El último peso/reps usados de cada ejercicio se recuerdan** de una sesión a otra (se guardan aparte, no dentro del día) — al abrir una serie nueva, los campos ya vienen rellenos con lo último que apuntaste. Las repeticiones de hoy siguen empezando en 0 cada día nuevo, que es lo correcto; lo que ya no se pierde es el peso/reps de referencia.
+- **Rutinas (packs de entrenamiento)**: mismo sistema que los packs de comida — guarda una rutina completa una vez ("Push Day", "Piernas fuego"...) y añádela entera a la lista de hoy con un toque. Los ejercicios que ya tuvieras en la lista no se duplican.
+- Récords personales (PR), racha, gráfico de volumen semanal y calendario de adherencia — todo lo de antes, intacto.
+- La racha dorada del análisis semanal ahora se activa al 70% (antes 85%, demasiado exigente para el día a día real).
 
-### 🏋️ Entrenamiento
-- Registro de ejercicios con contador de reps, racha y calendario mensual — **toca cualquier día** para ver qué ejercicios hiciste.
-- **Récords personales (PR)**: cada ejercicio recuerda tu mejor marca histórica y muestra una insignia 🏆 cuando estás en tu mejor día.
-- **Gráfico de volumen semanal**: barras Lunes-Domingo con el total de repeticiones de cada día, para ver de un vistazo si la semana va a más o a menos.
-- Gamificación estilo Duolingo: al completar el 100% de tus protocolos o todos los ejercicios del día, aparece una animación con la semana (L-D) marcada. Insignias de racha (🔥🥉🥈🥇💎👑) según los días consecutivos.
+### 🍽️ Nutrición
+- Packs de comida, búsqueda automática (Open Food Facts), escáner de código de barras integrado en "añadir comida", macros, calculadora BMR/TDEE, calendario de adherencia con detalle al tocar un día.
+
+### 👤 Perfil — ahora es el centro de mando personal
+- **Motivación Personal** (antes en la pantalla principal) vive ahora aquí, con lightbox al tocar una foto.
+- **Copia de seguridad** (exportar/importar/permisos) también se mudó aquí — la pantalla principal queda más despejada.
+- **Resumen a largo plazo** nuevo: miembro desde, días activos, mejor racha de hábitos y de entrenamiento históricas, entrenamientos totales, media de hábitos — para ver de un vistazo cómo vas más allá del día a día.
+- @handle aleatorio + foto personalizable, 100% local. Botón "Vincular con Google" visible pero todavía inactivo (ver Roadmap).
 
 ### 🧭 Bottom Hot Bar
-Sustituye a los antiguos botones de deslizar por los bordes. Cinco accesos fijos abajo: **Social** · **Entreno** · **+ (añadir rápido)** · **Dietas** · **Perfil**. El gesto de swipe entre Wayne Protocol y Modo Dieta se mantiene intacto — la hot bar es un atajo adicional, no lo sustituye.
+Iconos propios en SVG en vez de emojis (Social, Dietas, +, Entreno, Perfil). El orden ahora coincide con la dirección real del swipe: **Dietas a la izquierda del centro** (la pantalla de Dieta está físicamente a la izquierda) y **Entreno a la derecha** — antes estaban cambiados. El gesto de deslizar entre pantallas se mantiene intacto.
 
-### 👤 Perfil (invitado)
-Accesible desde la Hot Bar. Cuenta 100% local y anónima: @handle generado al azar (estilo Instagram, ej. `@dark_knight482`) y foto de perfil personalizable. Sin registro, sin servidor. Incluye un botón "Vincular con Google" ya visible pero todavía inactivo — ver Roadmap.
-
-### 📌 Motivación Personal
-Antes "Salón de la Fama". Mismo sistema de fotos con captions, ahora con **lightbox**: toca una foto para verla en grande con el título bien legible.
-
-### 🎨 Temas ocultos: Ymir y Batgirl · edición Ymir
-El tema violeta/cian (antes llamado "Elite" en código, renombrado para evitar cualquier parecido con nombres de otras apps) se activa igual que siempre: 3 toques en la "Y" de W.A.Y.N.E. Y ahora el tema rosa **Batgirl** (3 toques en la "E") comparte el mismo pulido: glass-blur en tarjetas y modales, transiciones tipo spring, todo más suave — la paleta rosa/pastel no cambia, solo el acabado. Ambos siguen siendo experimentales y solo afectan a esas dos pieles ocultas; **la UX del tema por defecto no se ha tocado**.
+### 🎨 Temas ocultos: Ymir y Batgirl
+Violeta/cian (3 toques en la "Y") y rosa (3 toques en la "E"), ambos con el mismo pulido fluido. Experimentales, no afectan al tema por defecto.
 
 ---
 
@@ -55,7 +52,9 @@ El tema violeta/cian (antes llamado "Elite" en código, renombrado para evitar c
 
 **🔗 Inicio de sesión con Google — diseñado, no conectado todavía.** El botón ya está en Perfil. Cuando se implemente de verdad: pedirá permiso explícito para usar la foto de perfil de Google, preguntará claramente si quieres recibir correos sobre la app (opt-in, nunca por defecto), y te dejará elegir tu propio @ si está disponible.
 
-**📋 Pendiente de próximas sesiones:** mejoras adicionales de bitácora (edición de notas), independencia visual completa de la sección Entrenamiento, y todo lo que dependa de que exista Social/backend.
+**🎬 Referencia visual del ejercicio (GIF/vídeo/imagen) — investigado, no incluido todavía.** La opción realista y gratuita es la API pública de wger.de (base de datos de ejercicios open source, sin necesidad de pago), pero integrarla bien necesita más tiempo de prueba real con conexión que el que tengo en esta sesión — prefiero no meter una integración a medias que falle en silencio. Queda como la siguiente pieza clara a construir.
+
+**📋 Pendiente de próximas sesiones:** mejoras adicionales de bitácora (edición de notas), referencia visual de ejercicios (ver arriba), y todo lo que dependa de que exista Social/backend.
 
 ---
 
