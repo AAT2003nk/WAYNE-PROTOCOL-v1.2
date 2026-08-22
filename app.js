@@ -2759,10 +2759,10 @@ function setupProfileSheet(){
    Mientras GOOGLE_CLIENT_ID no esté configurado, el botón lo explica en
    vez de fingir que funciona. */
 
-const GOOGLE_CLIENT_ID = 'TU_CLIENT_ID_AQUI.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '926885443193-n75bg3q6crlkfiu5gikgm5otnlhg3plc.apps.googleusercontent.com';
 
 function googleClientConfigured(){
-  return GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('TU_CLIENT_ID');
+  return GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('926885443193-n75bg3q6crlkfiu5gikgm5otnlhg3plc.apps.googleusercontent.com');
 }
 
 // Decodifica el id_token (JWT) para leer nombre/foto/email. Es una lectura
