@@ -1,9 +1,10 @@
-# WAYNE PROTOCOL v2.0
+# WAYNE PROTOCOL v2.2
 
 Bat-terminal personal: hábitos diarios, entrenamiento con series/peso/reps y rutinas, dieta con macros y packs, bitácora, perfil de invitado con resumen a largo plazo — todo local, sin servidor, sin cuentas reales (todavía).
 
 > Este archivo se llamaba `LEEME.md`. A partir de esta versión pasa a llamarse `README.md`.
 > Nota de control de versiones: la numeración se corrigió aquí — esta es la v2.0 real.
+> ¿Quieres ver cómo ha evolucionado la app desde la v1.0? Mira `CHANGELOG.md`.
 
 ## Archivos del proyecto
 - `index.html` — estructura de la app (dos pantallas: Wayne Protocol + Modo Dieta, más las pantallas superpuestas de Perfil/Social)
@@ -39,8 +40,16 @@ Bat-terminal personal: hábitos diarios, entrenamiento con series/peso/reps y ru
 ### 🧭 Bottom Hot Bar
 Iconos propios en SVG en vez de emojis (Social, Dietas, +, Entreno, Perfil). El orden ahora coincide con la dirección real del swipe: **Dietas a la izquierda del centro** (la pantalla de Dieta está físicamente a la izquierda) y **Entreno a la derecha** — antes estaban cambiados. El gesto de deslizar entre pantallas se mantiene intacto.
 
-### 🎨 Temas ocultos: Ymir y Batgirl
-Violeta/cian (3 toques en la "Y") y rosa (3 toques en la "E"), ambos con el mismo pulido fluido. Experimentales, no afectan al tema por defecto.
+### 🎨 Cuatro temas ocultos
+- **Ymir** (violeta/cian): 3 toques en la "Y" de W.A.Y.N.E.
+- **Batgirl** (rosa/pastel): 3 toques en la "E" de W.A.Y.N.E.
+- **Spidey / Spider-Tracker** (rojo/azul, homenaje a Spider-Man, ya que Wayne Protocol nace inspirado en Batman): 3 toques en la palabra **"PROTOCOLO"** del subtítulo de la cabecera principal. Telaraña sutil de fondo, glow "spidey-sense" pulsante en el anillo de progreso, tipografía **Anton** (contundente pero legible — se cambió desde una fuente cómic que costaba leer).
+- **Nocturne** (rosa + púrpura + blanco + negro, pensado como el tema femenino definitivo): 3 toques en la palabra **"NOCTURNO"** del mismo subtítulo. Es un tema **claro** (fondo blanco/lavanda, no oscuro), con tarjetas de cristal blanco translúcido y el degradado rosa→púrpura como firma en logo, botones y anillos de progreso. Misma mecánica que Ymir (glass-blur, tarjetas muy redondeadas, transiciones spring), identidad de color totalmente nueva, más "glam luminoso" que el pastel de Batgirl.
+
+Solo puede haber un tema oculto activo a la vez — activar uno sustituye al anterior. Ninguno de los cuatro toca la UX del tema por defecto ni tiene pista visual alguna de que existe.
+
+### ✏️ Perfil: @handle editable
+Toca tu "@usuario" en la pantalla de Perfil para cambiarlo por el que quieras. Se indica explícitamente que **no está verificado por Google** — es solo tu identificador local, sin ninguna comprobación real detrás (eso necesitaría la cuenta vinculada de verdad, ver Roadmap).
 
 ---
 
@@ -50,9 +59,16 @@ Violeta/cian (3 toques en la "Y") y rosa (3 toques en la "E"), ambos con el mism
 
 **🔒 Social real (fotos, likes, comentarios, buscar perfiles por @) — bloqueado, prioridad baja/nula.** Esto necesita una base de datos y un servidor de verdad; una PWA estática como esta no puede simular cuentas compartidas entre dispositivos sin backend. El botón "Social" en la Hot Bar ya existe y explica esto mismo al usuario en vez de simular algo que no funciona.
 
-**🔗 Inicio de sesión con Google — diseñado, no conectado todavía.** El botón ya está en Perfil. Cuando se implemente de verdad: pedirá permiso explícito para usar la foto de perfil de Google, preguntará claramente si quieres recibir correos sobre la app (opt-in, nunca por defecto), y te dejará elegir tu propio @ si está disponible.
+**🔗 Inicio de sesión con Google — implementado de verdad, falta tu Client ID.** Usa Google Identity Services (la librería oficial de Google), 100% en el navegador, sin backend. Para activarlo:
+1. Ve a [Google Cloud Console](https://console.cloud.google.com/) → crea un proyecto (o usa uno existente).
+2. **APIs y servicios → Pantalla de consentimiento OAuth** → configúrala como "Externa" y rellena los datos básicos (nombre de la app, correo de soporte).
+3. **APIs y servicios → Credenciales → Crear credenciales → ID de cliente de OAuth** → tipo "Aplicación web".
+4. En "Orígenes de JavaScript autorizados" añade la URL exacta donde tengas la app publicada (ej. `https://tuusuario.github.io`).
+5. Copia el Client ID que te da (termina en `.apps.googleusercontent.com`) y pégalo en `app.js`, buscando la constante `GOOGLE_CLIENT_ID` cerca del final del archivo.
 
-**🎬 Referencia visual del ejercicio (GIF/vídeo/imagen) — investigado, no incluido todavía.** La opción realista y gratuita es la API pública de wger.de (base de datos de ejercicios open source, sin necesidad de pago), pero integrarla bien necesita más tiempo de prueba real con conexión que el que tengo en esta sesión — prefiero no meter una integración a medias que falle en silencio. Queda como la siguiente pieza clara a construir.
+Con eso puesto, el botón "Vincular con Google" en Perfil pide permiso explícito para la foto y pregunta claramente si quieres recibir correos (opt-in, nunca por defecto) — todo funcional, no una maqueta.
+
+**🎬 Guía visual del ejercicio — implementada.** Al abrir la sesión de un ejercicio (▶), la app consulta automáticamente la API pública y gratuita de **wger.de** (base de datos de ejercicios open source, sin clave) y muestra el nombre encontrado, categoría e imagen si existe, más un enlace a la ficha completa — todo sin salir del Wayne Protocol. Es un servicio de terceros que no controlamos: si no encuentra el ejercicio (sobre todo con nombres muy coloquiales en español), lo dice claramente y sugiere probar el nombre en inglés, en vez de fallar en silencio.
 
 **📋 Pendiente de próximas sesiones:** mejoras adicionales de bitácora (edición de notas), referencia visual de ejercicios (ver arriba), y todo lo que dependa de que exista Social/backend.
 

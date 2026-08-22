@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<title>WAYNE PROTOCOL v2.0</title>
+<title>WAYNE PROTOCOL v2.2</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Anton&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -36,6 +36,14 @@
               <linearGradient id="ymirArcGradientDiet" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stop-color="#8B5CF6"/>
                 <stop offset="100%" stop-color="#06B6D4"/>
+              </linearGradient>
+              <linearGradient id="spideyArcGradientDiet" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ED1C24"/>
+                <stop offset="100%" stop-color="#1E5FFF"/>
+              </linearGradient>
+              <linearGradient id="nocturneArcGradientDiet" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#FF2E9A"/>
+                <stop offset="100%" stop-color="#9333EA"/>
               </linearGradient>
             </defs>
             <circle cx="120" cy="120" r="88" class="radar-ring ring-outer"/>
@@ -207,7 +215,7 @@
       <header class="hud">
         <div class="hud-top">
           <span class="brand">W.A.<span id="ymirTrigger" class="brand-y">Y</span>.N.<span id="batgirlTrigger" class="brand-e">E</span></span>
-          <span class="brand-sub">PROTOCOLO NOCTURNO</span>
+          <span class="brand-sub"><span id="spideyTrigger" class="hidden-trigger-word">PROTOCOLO</span> <span id="nocturneTrigger" class="hidden-trigger-word">NOCTURNO</span></span>
         </div>
 
         <div class="radar-wrap">
@@ -216,6 +224,14 @@
               <linearGradient id="ymirArcGradientMain" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stop-color="#8B5CF6"/>
                 <stop offset="100%" stop-color="#06B6D4"/>
+              </linearGradient>
+              <linearGradient id="spideyArcGradientMain" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ED1C24"/>
+                <stop offset="100%" stop-color="#1E5FFF"/>
+              </linearGradient>
+              <linearGradient id="nocturneArcGradientMain" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#FF2E9A"/>
+                <stop offset="100%" stop-color="#9333EA"/>
               </linearGradient>
             </defs>
             <circle cx="120" cy="120" r="110" class="radar-ring ring-outer"/>
@@ -403,7 +419,8 @@
       <button class="profile-avatar-edit" id="profileAvatarEditBtn" title="Cambiar foto">📷</button>
       <input type="file" id="profileAvatarInput" accept="image/*" hidden>
     </div>
-    <h3 class="profile-handle" id="profileHandle">@invitado</h3>
+    <h3 class="profile-handle" id="profileHandle" title="Toca para cambiar tu @"><span id="profileHandleText">@invitado</span> <span class="profile-handle-edit">✏️</span></h3>
+    <p class="profile-not-verified">No verificado por Google</p>
     <p class="profile-guest-tag">Cuenta de invitado — todo se guarda solo en este dispositivo</p>
 
     <div class="profile-stats">
@@ -448,7 +465,7 @@
     <input type="file" id="importFileInput" accept="application/json,.json" hidden>
 
     <button class="btn-ghost full" id="profileGoogleBtn" style="margin-top:14px;">🔗 Vincular con Google</button>
-    <p class="hint">Próximamente: iniciar sesión con Google para usar tu foto real y elegir tu propio @, con permiso explícito para correos. De momento tu cuenta es 100% local y anónima.</p>
+    <p class="hint">El botón ya funciona de verdad (Google Identity Services): te pedirá permiso explícito para tu foto y te preguntará claramente si quieres recibir correos. Solo falta que el dueño de esta instancia configure su propio Client ID gratuito de Google — instrucciones en el README.</p>
   </div>
 </div>
 
@@ -579,6 +596,21 @@
     <h3 class="profile-handle" id="sessionExerciseName">EJERCICIO</h3>
     <p class="profile-guest-tag" id="sessionVolumeText">0 reps completadas hoy</p>
 
+    <div class="exercise-guide" id="exerciseGuide">
+      <div class="exercise-guide-loading" id="exerciseGuideLoading">🔎 Buscando guía del ejercicio...</div>
+      <div class="exercise-guide-content" id="exerciseGuideContent" hidden>
+        <img class="exercise-guide-img" id="exerciseGuideImg" hidden alt="Guía del ejercicio">
+        <div class="exercise-guide-text">
+          <strong id="exerciseGuideName"></strong>
+          <p id="exerciseGuideDesc"></p>
+          <a id="exerciseGuideLink" href="#" target="_blank" rel="noopener" class="exercise-guide-link" hidden>Ver más en wger.de ↗</a>
+        </div>
+      </div>
+      <div class="exercise-guide-empty" id="exerciseGuideEmpty" hidden>
+        Sin guía disponible para este ejercicio. Prueba a escribir el nombre en inglés (ej. "incline dumbbell press") la próxima vez que lo añadas.
+      </div>
+    </div>
+
     <div class="session-set-list" id="sessionSetList"></div>
 
     <button class="btn-ghost full" id="sessionAddSetBtn" style="margin-top:10px;">+ AÑADIR SERIE</button>
@@ -620,6 +652,7 @@
   </div>
 </div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js" defer></script>
 <script src="app.js"></script>
 </body>

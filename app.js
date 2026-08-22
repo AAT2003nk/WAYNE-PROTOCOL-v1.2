@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v2.0 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v2.2 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -916,12 +916,118 @@ function openWorkoutSession(idx){
   if(!ex.sets) ex.sets = [];
   document.getElementById('sessionExerciseName').textContent = ex.name;
   renderSessionSets();
+  loadExerciseGuide(ex.name);
   document.getElementById('sessionOverlay').hidden = false;
 }
 
 function closeWorkoutSession(){
   document.getElementById('sessionOverlay').hidden = true;
   sessionExerciseIndex = null;
+}
+
+/* ---------------- GUÍA VISUAL DEL EJERCICIO (wger.de) ----------------
+   wger.de es una base de datos de ejercicios open source y gratuita, sin
+   necesidad de clave. La consulta sale directo desde el navegador del
+   usuario, igual que Open Food Facts — no hay servidor propio de por
+   medio. Es un servicio de terceros que no controlamos: si un día cambia
+   su API o no tiene el ejercicio en español, esto se degrada solo a un
+   aviso amable en vez de romper nada. En caché en memoria por nombre de
+   ejercicio para no repetir la consulta cada vez que abres la sesión. */
+
+const exerciseGuideCache = {};
+
+async function fetchExerciseGuide(name){
+  if(exerciseGuideCache[name] !== undefined) return exerciseGuideCache[name];
+
+  try{
+    // 1) buscamos el ejercicio por nombre (probamos español, si no hay
+    //    resultado probamos inglés, que tiene muchísima más cobertura)
+    let suggestion = await searchWgerExercise(name, 2) // 2 = español en wger
+                  || await searchWgerExercise(name, 1); // 1 = inglés
+
+    if(!suggestion){
+      exerciseGuideCache[name] = null;
+      return null;
+    }
+
+    const baseId = suggestion.data.base_id || suggestion.data.id;
+    let imageUrl = null;
+    try{
+      const imgRes = await fetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${baseId}&format=json`);
+      if(imgRes.ok){
+        const imgData = await imgRes.json();
+        if(imgData.results && imgData.results.length > 0){
+          imageUrl = imgData.results[0].image;
+        }
+      }
+    }catch(err){ /* sin imagen, no pasa nada, seguimos con el texto */ }
+
+    const guide = {
+      name: suggestion.value || name,
+      description: (suggestion.data.category || '').toString(),
+      image: imageUrl,
+      baseId
+    };
+    exerciseGuideCache[name] = guide;
+    return guide;
+  }catch(err){
+    exerciseGuideCache[name] = null;
+    return null;
+  }
+}
+
+async function searchWgerExercise(name, language){
+  const url = `https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(name)}&language=${language}&format=json`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('network');
+  const data = await res.json();
+  if(data.suggestions && data.suggestions.length > 0) return data.suggestions[0];
+  return null;
+}
+
+async function loadExerciseGuide(name){
+  const loadingEl = document.getElementById('exerciseGuideLoading');
+  const contentEl = document.getElementById('exerciseGuideContent');
+  const emptyEl = document.getElementById('exerciseGuideEmpty');
+  const imgEl = document.getElementById('exerciseGuideImg');
+
+  loadingEl.hidden = false;
+  contentEl.hidden = true;
+  emptyEl.hidden = true;
+
+  const guide = await fetchExerciseGuide(name);
+
+  // el usuario pudo cerrar la sesión o cambiar de ejercicio mientras cargaba
+  if(sessionExerciseIndex === null || !today.exercises[sessionExerciseIndex]) return;
+  if(today.exercises[sessionExerciseIndex].name !== name) return;
+
+  loadingEl.hidden = true;
+
+  if(!guide){
+    emptyEl.hidden = false;
+    return;
+  }
+
+  contentEl.hidden = false;
+  document.getElementById('exerciseGuideName').textContent = guide.name;
+  document.getElementById('exerciseGuideDesc').textContent = guide.description
+    ? `Categoría: ${guide.description}`
+    : 'Ejercicio encontrado en la base de datos de wger.';
+
+  if(guide.image){
+    imgEl.src = guide.image;
+    imgEl.hidden = false;
+  } else {
+    imgEl.hidden = true;
+  }
+
+  const linkEl = document.getElementById('exerciseGuideLink');
+  if(guide.baseId){
+    linkEl.href = `https://wger.de/en/exercise/${guide.baseId}/view/`;
+    linkEl.hidden = false;
+  } else {
+    linkEl.hidden = true;
+  }
 }
 
 function renderSessionSets(){
@@ -2503,7 +2609,7 @@ function ensureGuestProfile(){
 
 function renderProfileSheet(){
   ensureGuestProfile();
-  document.getElementById('profileHandle').textContent = state.profileMeta.handle;
+  document.getElementById('profileHandleText').textContent = state.profileMeta.handle;
   document.getElementById('profileAvatarImg').src = state.profileMeta.avatarDataUrl || 'icon.svg';
 
   document.getElementById('profileStatDay').textContent =
@@ -2581,9 +2687,41 @@ function renderProfileSummary(){
   });
 }
 
+// Cualquiera puede ponerse el @ que quiera — no hay verificación real
+// (eso necesitaría una cuenta vinculada de verdad, ver Roadmap), así que se
+// dice explícitamente en la propia pantalla para no generar confusión.
+async function editProfileHandle(){
+  ensureGuestProfile();
+  const raw = await showModal({
+    title: 'Cambiar tu @',
+    message: 'Elige el @ que quieras. No está verificado por Google — es solo tu identificador local.',
+    input: true,
+    inputValue: state.profileMeta.handle.replace(/^@/, ''),
+    placeholder: 'tu_usuario',
+    confirmText: 'GUARDAR'
+  });
+  if(!raw) return;
+
+  const clean = raw.trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24);
+  if(!clean){
+    await showModal({
+      title: 'Nombre no válido',
+      message: 'Usa solo letras, números y guiones bajos.',
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+    return;
+  }
+
+  state.profileMeta.handle = `@${clean}`;
+  saveData(state);
+  document.getElementById('profileHandleText').textContent = state.profileMeta.handle;
+}
+
 function setupProfileSheet(){
   document.getElementById('profileCloseBtn').addEventListener('click', () => closeSheet('profileOverlay'));
   document.getElementById('socialCloseBtn').addEventListener('click', () => closeSheet('socialOverlay'));
+
+  document.getElementById('profileHandle').addEventListener('click', editProfileHandle);
 
   document.getElementById('profileAvatarEditBtn').addEventListener('click', () => {
     document.getElementById('profileAvatarInput').click();
@@ -2608,13 +2746,106 @@ function setupProfileSheet(){
     e.target.value = '';
   });
 
-  document.getElementById('profileGoogleBtn').addEventListener('click', async () => {
+  document.getElementById('profileGoogleBtn').addEventListener('click', startGoogleLink);
+}
+
+/* ---------------- VINCULACIÓN CON GOOGLE (Google Identity Services) ----------------
+   Implementación REAL, no una simulación: usa la librería oficial de Google
+   (accounts.google.com/gsi/client), 100% en el navegador, sin backend. Lo
+   único que falta para que funcione de verdad es un Client ID de Google
+   Cloud, que solo el propio dueño de la app puede crear (son credenciales
+   ligadas a su cuenta de Google). Instrucciones completas en el README.
+
+   Mientras GOOGLE_CLIENT_ID no esté configurado, el botón lo explica en
+   vez de fingir que funciona. */
+
+const GOOGLE_CLIENT_ID = 'TU_CLIENT_ID_AQUI.apps.googleusercontent.com';
+
+function googleClientConfigured(){
+  return GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('TU_CLIENT_ID');
+}
+
+// Decodifica el id_token (JWT) para leer nombre/foto/email. Es una lectura
+// simple en el propio navegador, sin verificar la firma — suficiente para
+// una app personal sin backend que la valide; no se usa para nada sensible.
+function decodeGoogleJWT(token){
+  try{
+    const payload = token.split('.')[1];
+    const json = decodeURIComponent(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+      .split('').map(c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''));
+    return JSON.parse(json);
+  }catch(err){
+    return null;
+  }
+}
+
+async function handleGoogleCredentialResponse(response){
+  const profile = decodeGoogleJWT(response.credential);
+  if(!profile){
     await showModal({
-      title: '🔗 Vincular con Google',
-      message: 'Todavía no está activo. Cuando lo esté, te pedirá permiso explícito para usar tu foto de perfil de Google y te dejará elegir tu propio @ (si está disponible) — y te preguntará claramente si quieres recibir correos sobre la app o no.',
+      title: 'No se pudo leer tu cuenta',
+      message: 'Google devolvió una respuesta que no se pudo procesar. Inténtalo de nuevo.',
       hideCancel: true, confirmText: 'ENTENDIDO'
     });
+    return;
+  }
+
+  const wantsPhoto = await showModal({
+    title: '🔗 Vincular con Google',
+    message: `Hola, ${profile.name || 'usuario'}. ¿Quieres usar tu foto de perfil de Google (${profile.email}) en el Wayne Protocol?`,
+    confirmText: 'USAR MI FOTO',
+    cancelText: 'AHORA NO'
   });
+
+  ensureGuestProfile();
+  if(wantsPhoto && profile.picture){
+    state.profileMeta.avatarDataUrl = profile.picture;
+    document.getElementById('profileAvatarImg').src = profile.picture;
+  }
+
+  const wantsEmails = await showModal({
+    title: '📧 Correos sobre la app',
+    message: '¿Quieres recibir correos de Wayne Protocol (novedades, avisos)? Puedes cambiar esto cuando quieras.',
+    confirmText: 'SÍ, QUIERO',
+    cancelText: 'NO, GRACIAS'
+  });
+
+  state.profileMeta.googleLinked = true;
+  state.profileMeta.googleEmail = profile.email || null;
+  state.profileMeta.emailOptIn = !!wantsEmails;
+  saveData(state);
+
+  await showModal({
+    title: '✅ Cuenta vinculada',
+    message: wantsEmails
+      ? 'Listo. Tu cuenta de Google está vinculada y recibirás correos sobre la app.'
+      : 'Listo. Tu cuenta de Google está vinculada. No recibirás correos.',
+    hideCancel: true, confirmText: 'GENIAL'
+  });
+}
+
+function startGoogleLink(){
+  if(!googleClientConfigured()){
+    showModal({
+      title: '🔗 Vincular con Google — falta configurar',
+      message: 'El código ya está preparado y funciona de verdad, pero necesita un Client ID de Google Cloud propio (son credenciales ligadas a tu cuenta, nadie puede crearlas por ti). Busca "GOOGLE_CLIENT_ID" en app.js y sigue las instrucciones del README para conseguir el tuyo gratis en unos minutos.',
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+    return;
+  }
+  if(typeof google === 'undefined' || !google.accounts){
+    showModal({
+      title: 'Google no disponible',
+      message: 'No se pudo cargar la librería de Google (revisa tu conexión) o el navegador la está bloqueando.',
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleCredentialResponse
+  });
+  google.accounts.id.prompt();
 }
 
 /* ---------------- COPIA DE SEGURIDAD (EXPORTAR / IMPORTAR) ---------------- */
@@ -3034,13 +3265,15 @@ maybeSendReminder();
 setInterval(tickClock, 1000);
 setTimeout(runOnboarding, 800);
 
-/* ---------------- TEMAS OCULTOS: BATGIRL Y YMIR ---------------- */
+/* ---------------- TEMAS OCULTOS: BATGIRL, YMIR, SPIDEY Y NOCTURNE ---------------- */
 
 const THEME_KEY = 'wayneProtocolTheme';
 
 function applyTheme(theme){
   document.body.classList.toggle('theme-batgirl', theme === 'batgirl');
   document.body.classList.toggle('theme-ymir', theme === 'ymir');
+  document.body.classList.toggle('theme-spidey', theme === 'spidey');
+  document.body.classList.toggle('theme-nocturne', theme === 'nocturne');
 }
 
 (function initTheme(){
@@ -3079,6 +3312,8 @@ function setupHiddenThemeTrigger(elementId, themeName){
 
 setupHiddenThemeTrigger('batgirlTrigger', 'batgirl');
 setupHiddenThemeTrigger('ymirTrigger', 'ymir');
+setupHiddenThemeTrigger('spideyTrigger', 'spidey');
+setupHiddenThemeTrigger('nocturneTrigger', 'nocturne');
 
 /* ---------------- SERVICE WORKER (PWA offline) ---------------- */
 if('serviceWorker' in navigator){
