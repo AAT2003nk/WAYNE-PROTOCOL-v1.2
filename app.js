@@ -2761,8 +2761,16 @@ function setupProfileSheet(){
 
 const GOOGLE_CLIENT_ID = '926885443193-n75bg3q6crlkfiu5gikgm5otnlhg3plc.apps.googleusercontent.com';
 
+// Comprobación robusta: exige que sea una cadena no vacía con la forma real
+// de un Client ID de Google (termina en .apps.googleusercontent.com) y que
+// no contenga restos del texto de ejemplo. No depende de comparar contra el
+// propio placeholder literal (eso es justo lo que se rompió la vez pasada:
+// al pegar el ID real con "reemplazar todo", se sobrescribió también el
+// texto de comparación de aquí dentro, y la función siempre devolvía false).
 function googleClientConfigured(){
-  return GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('926885443193-n75bg3q6crlkfiu5gikgm5otnlhg3plc.apps.googleusercontent.com');
+  return !!GOOGLE_CLIENT_ID
+    && GOOGLE_CLIENT_ID.endsWith('.apps.googleusercontent.com')
+    && !GOOGLE_CLIENT_ID.toUpperCase().includes('TU_CLIENT_ID');
 }
 
 // Decodifica el id_token (JWT) para leer nombre/foto/email. Es una lectura
