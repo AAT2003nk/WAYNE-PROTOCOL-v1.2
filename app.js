@@ -1,5 +1,5 @@
 /* ============================================================
-   WAYNE PROTOCOL v2.2 — lógica de la Bat-Terminal
+   WAYNE PROTOCOL v2.3 — lógica de la Bat-Terminal
    Persistencia 100% local (localStorage). Sin backend.
    ============================================================ */
 
@@ -77,6 +77,7 @@ function freshState(){
     exercisePacks: [],
     exerciseLastSet: {},
     profileMeta: null,
+    darkKnight: defaultDarkKnightState(),
     days: {}
   };
 }
@@ -112,6 +113,7 @@ function loadData(){
   if(!data.exercisePacks) data.exercisePacks = [];
   if(!data.exerciseLastSet) data.exerciseLastSet = {};
   if(!data.profileMeta) data.profileMeta = null; // se genera solo al abrir Perfil por primera vez
+  if(!data.darkKnight) data.darkKnight = defaultDarkKnightState();
   if(!data.days) data.days = {};
   if(!data.startDate) data.startDate = todayKey();
 
@@ -168,6 +170,7 @@ function ensureToday(data){
       habits: Object.fromEntries(data.habitDefs.map(h => [h, { done:false, at:null }])),
       exercises: DEFAULT_EXERCISES.map(e => ({...e})),
       waterMl: 0,
+      exerciseMin: 0,
       mealLog: Object.fromEntries(MEAL_SLOTS.map(s => [s, []])),
       trainingDone: false,
       logs: []
@@ -588,6 +591,8 @@ function tickClock(){
   if(now.getSeconds() === 0){
     maybeSendReminder();
   }
+
+  dkTick();
 }
 
 // Insignias de racha — puro azúcar de gamificación, sin afectar a los datos
@@ -663,6 +668,7 @@ function updateTrainingStreak(){
    Duolingo. Máximo una vez por tipo y por día (con flag en localStorage). */
 
 function maybeCelebrate(kind, streakCount){
+  if(isDarkKnightActive()) return; // gamificación mínima en Caballero Oscuro
   const flagKey = `wayneCelebrate:${kind}:${todayKey()}`;
   if(localStorage.getItem(flagKey)) return;
   localStorage.setItem(flagKey, '1');
@@ -1904,6 +1910,7 @@ function todayMacrosConsumed(){
 }
 
 function updateKcalSummary(){
+  renderDarkKnight();
   const consumed = todayKcalConsumed();
   const goal = state.profile && state.profile.kcalGoal ? state.profile.kcalGoal : null;
 
@@ -2856,6 +2863,677 @@ function startGoogleLink(){
   google.accounts.id.prompt();
 }
 
+/* ============================================================
+   CABALLERO OSCURO — modo hiperenfoque ("Winter Arc")
+   ------------------------------------------------------------
+   Rutina militar: cada día hay que cumplir DOS cosas, y si un solo día
+   falla, el Arc termina y el contador vuelve a 0.
+     1) Mínimo 20 min de ejercicio (temporizador o minutos a mano).
+     2) Comida registrada y kcal dentro del rango del objetivo
+        (1600 kcal por defecto, ±10%).
+   Se evalúa cada día pasado al abrir la app / al cambiar de día. Romper el
+   Arc NUNCA borra datos: solo reinicia el contador. Salir del modo siempre
+   es posible desde su menú.
+
+   OJO con los const de este bloque: se usan en tiempo de ejecución (render),
+   pero NO dentro de defaultDarkKnightState(), que se llama al cargar el
+   estado (antes de que existan estas constantes). Por eso esa función usa
+   números literales.
+   ============================================================ */
+
+const DK_DEFAULT_KCAL = 1600;
+const DK_MIN_KCAL_TARGET = 1400;   // suelo de seguridad: el modo no permite menos
+const DK_MAX_KCAL_TARGET = 4000;
+const DK_MIN_EXERCISE_MIN = 20;
+const DK_KCAL_TOLERANCE = 0.10;
+const DK_STALE_TIMER_CAP_MIN = 120; // tope de crédito si se olvida parar el temporizador
+
+const DK_QUOTES = [
+  'Sin excusas. Solo el siguiente día.',
+  'La disciplina es hacerlo cuando no apetece.',
+  'Hoy se gana en silencio.',
+  'No negocies contigo mismo.',
+  'Constancia por encima de motivación.',
+  'Un día más. Solo eso.',
+  'Lo que haces hoy es lo que eres mañana.'
+];
+
+const DK_CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const DK_X_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function defaultDarkKnightState(){
+  return {
+    enabled: false,
+    startDate: null,
+    kcalTarget: 1600,
+    minExerciseMin: 20,
+    timerStart: null,
+    brokenAt: null,
+    brokenInfo: null,
+    bestRun: 0,
+    runs: []
+  };
+}
+
+function isDarkKnightActive(){
+  return !!(state && state.darkKnight && state.darkKnight.enabled);
+}
+
+// Se usa el mismo texto de clave que THEME_KEY a propósito (en vez de la
+// constante) porque esto puede ejecutarse durante la carga, antes de que THEME_KEY exista.
+function syncTheme(){
+  try{
+    applyTheme(localStorage.getItem('wayneProtocolTheme') || 'default');
+  }catch(err){ /* sin acceso a localStorage: nada que sincronizar */ }
+}
+
+function dayKcalTotal(day){
+  if(!day || !day.mealLog) return 0;
+  return MEAL_SLOTS.reduce((sum, slot) =>
+    sum + ((day.mealLog[slot] || []).reduce((s, e) => s + (e.kcal || 0), 0)), 0);
+}
+
+function dkBand(){
+  const t = state.darkKnight.kcalTarget || DK_DEFAULT_KCAL;
+  return {
+    lo: Math.round(t * (1 - DK_KCAL_TOLERANCE)),
+    hi: Math.round(t * (1 + DK_KCAL_TOLERANCE))
+  };
+}
+
+function dkDayStatus(day){
+  const dk = state.darkKnight;
+  const { lo, hi } = dkBand();
+  const exMin = (day && day.exerciseMin) || 0;
+  const kcal = dayKcalTotal(day);
+  const exerciseOk = exMin >= (dk.minExerciseMin || DK_MIN_EXERCISE_MIN);
+  const foodOk = kcal >= lo && kcal <= hi;
+  return { exMin, kcal, lo, hi, exerciseOk, foodOk, complete: exerciseOk && foodOk };
+}
+
+function dkParseKey(key){
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function dkTomorrowKey(){
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return localDateKey(d);
+}
+
+function dkFormatDate(key){
+  const txt = dkParseKey(key).toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+
+// Si el temporizador se quedó corriendo al cambiar de día, se acredita a su
+// día de origen (con tope) y se limpia, para no castigar un olvido de "parar".
+function dkSettleStaleTimer(){
+  const dk = state.darkKnight;
+  if(!dk.timerStart) return;
+  const startObj = new Date(dk.timerStart);
+  const startKey = localDateKey(startObj);
+  if(startKey === todayKey()) return;
+  const endOfDay = new Date(startObj.getFullYear(), startObj.getMonth(), startObj.getDate() + 1, 0, 0, 0, 0);
+  const mins = Math.min(DK_STALE_TIMER_CAP_MIN, Math.floor((endOfDay.getTime() - dk.timerStart) / 60000));
+  const day = state.days[startKey];
+  if(day && mins > 0) day.exerciseMin = (day.exerciseMin || 0) + mins;
+  dk.timerStart = null;
+  saveData(state);
+}
+
+// Revisa todos los días desde el inicio del Arc hasta AYER. El primero que no
+// cumpla rompe el Arc. Hoy nunca se evalúa: todavía se puede cumplir.
+function dkEvaluate(){
+  const dk = state.darkKnight;
+  if(!dk.enabled || !dk.startDate || dk.brokenAt) return;
+  dkSettleStaleTimer();
+  const todayStr = todayKey();
+  const cursor = dkParseKey(dk.startDate);
+  while(localDateKey(cursor) < todayStr){
+    const key = localDateKey(cursor);
+    const st = dkDayStatus(state.days[key]);
+    if(!st.complete){
+      dk.brokenAt = key;
+      dk.brokenInfo = {
+        exMin: st.exMin, kcal: st.kcal, lo: st.lo, hi: st.hi,
+        exerciseOk: st.exerciseOk, foodOk: st.foodOk
+      };
+      const achieved = daysBetween(dk.startDate, key);
+      dk.bestRun = Math.max(dk.bestRun || 0, achieved);
+      dk.runs.push({ start: dk.startDate, brokenAt: key, days: achieved });
+      saveData(state);
+      return;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+}
+
+function dkRunStats(){
+  const dk = state.darkKnight;
+  const todayStr = todayKey();
+  if(!dk.startDate || dk.startDate > todayStr) return { started:false };
+  if(dk.brokenAt){
+    const achieved = daysBetween(dk.startDate, dk.brokenAt);
+    return { started:true, broken:true, achieved, dayNumber: achieved };
+  }
+  const dayNumber = daysBetween(dk.startDate, todayStr) + 1;
+  const todaySt = dkDayStatus(today);
+  const achieved = (dayNumber - 1) + (todaySt.complete ? 1 : 0);
+  return { started:true, broken:false, dayNumber, achieved, todaySt };
+}
+
+function dkEl(id){ return document.getElementById(id); }
+
+function updateDarkKnightProfileStatus(){
+  const el = dkEl('dkProfileStatus');
+  if(!el) return;
+  if(!isDarkKnightActive()){
+    el.textContent = 'Modo inactivo.';
+    return;
+  }
+  const stats = dkRunStats();
+  if(!stats.started) el.textContent = 'Activo — el Día 1 aún no ha empezado.';
+  else if(stats.broken) el.textContent = 'Activo — Arc roto, pendiente de reiniciar.';
+  else el.textContent = `Activo — Día ${stats.dayNumber}.`;
+}
+
+/* ---------------- RENDER ---------------- */
+
+function renderDarkKnight(){
+  const screen = dkEl('dkScreen');
+  if(!screen) return;
+  const active = isDarkKnightActive();
+  const wasActive = document.body.classList.contains('dk-active');
+  document.body.classList.toggle('dk-active', active);
+  if(wasActive !== active) syncTheme();
+  screen.hidden = !active;
+  updateDarkKnightProfileStatus();
+  if(!active) return;
+
+  dkEvaluate();
+  const dk = state.darkKnight;
+  const stats = dkRunStats();
+  const preStart = !stats.started;
+  const broken = !!(stats.started && stats.broken);
+  const running = !!(stats.started && !stats.broken);
+
+  dkEl('dkTodaySection').hidden = !running;
+  dkEl('dkMealsSection').hidden = !running;
+  dkEl('dkPreNote').hidden = !preStart;
+  dkEl('dkBrokenCard').hidden = !broken;
+  dkEl('dkQuote').hidden = !running;
+
+  const hero = dkEl('dkHero');
+  hero.classList.toggle('done', running && stats.todaySt.complete);
+  hero.classList.toggle('broken', broken);
+
+  if(preStart){
+    dkEl('dkHeroLabel').textContent = 'EL ARC EMPIEZA';
+    dkEl('dkHeroNumber').textContent = '—';
+    dkEl('dkHeroSub').textContent = dkFormatDate(dk.startDate);
+    dkEl('dkPreNoteText').textContent = `El Día 1 empieza el ${dkFormatDate(dk.startDate).toLowerCase()}. Prepara la comida y el hueco de entreno.`;
+  } else if(broken){
+    dkEl('dkHeroLabel').textContent = 'DÍAS LOGRADOS';
+    dkEl('dkHeroNumber').textContent = stats.achieved;
+    dkEl('dkHeroSub').textContent = `Mejor marca: ${Math.max(dk.bestRun || 0, stats.achieved)} días`;
+    dkEl('dkBrokenText').textContent = dkDescribeBreak();
+  } else {
+    if(stats.achieved > (dk.bestRun || 0)){
+      dk.bestRun = stats.achieved;
+      saveData(state);
+    }
+    dkEl('dkHeroLabel').textContent = 'DÍA';
+    dkEl('dkHeroNumber').textContent = stats.dayNumber;
+    const past = stats.dayNumber - 1;
+    dkEl('dkHeroSub').textContent = stats.todaySt.complete
+      ? 'Hoy ya está ganado ✔'
+      : (past === 0
+          ? 'Primer día del Arc. Empieza ahora.'
+          : `${past} día${past === 1 ? '' : 's'} cumplido${past === 1 ? '' : 's'} · falta cerrar hoy`);
+    dkEl('dkQuote').textContent = DK_QUOTES[stats.dayNumber % DK_QUOTES.length];
+
+    dkRenderExercise();
+    dkRenderFood();
+    dkRenderMeals();
+    dkRenderStatus();
+  }
+
+  dkRenderGrid(stats);
+  dkEl('dkBest').textContent = `Mejor marca: ${Math.max(dk.bestRun || 0, stats.achieved || 0)} días`;
+}
+
+function dkDescribeBreak(){
+  const dk = state.darkKnight;
+  const info = dk.brokenInfo || {};
+  const need = dk.minExerciseMin || DK_MIN_EXERCISE_MIN;
+  const lines = [`El ${dkFormatDate(dk.brokenAt).toLowerCase()} no se cumplió el día:`];
+  lines.push(`• Ejercicio: ${info.exMin || 0}/${need} min ${info.exerciseOk ? '✔' : '✗'}`);
+  lines.push(`• Comida: ${info.kcal || 0} kcal (rango ${info.lo}–${info.hi}) ${info.foodOk ? '✔' : '✗'}`);
+  lines.push('');
+  lines.push('El contador vuelve a cero. Tus datos siguen intactos; el Arc se reinicia cuando tú decidas.');
+  return lines.join('\n');
+}
+
+function dkRenderExercise(){
+  const dk = state.darkKnight;
+  const saved = today.exerciseMin || 0;
+  const elapsedMs = dk.timerStart ? Date.now() - dk.timerStart : 0;
+  const live = Math.floor(elapsedMs / 60000);
+  const shown = saved + live;
+  const need = dk.minExerciseMin || DK_MIN_EXERCISE_MIN;
+
+  dkEl('dkExValue').textContent = `${shown} / ${need} min`;
+  const bar = dkEl('dkExBar');
+  bar.style.width = Math.min(100, (shown / need) * 100) + '%';
+  bar.classList.toggle('ok', shown >= need);
+  bar.classList.toggle('live', !!dk.timerStart);
+
+  const btn = dkEl('dkTimerBtn');
+  if(dk.timerStart){
+    const m = Math.floor(elapsedMs / 60000);
+    const s = Math.floor(elapsedMs / 1000) % 60;
+    btn.textContent = `■ TERMINAR · ${m}:${String(s).padStart(2, '0')}`;
+    btn.classList.add('running');
+  } else {
+    btn.textContent = '▶ INICIAR SESIÓN';
+    btn.classList.remove('running');
+  }
+}
+
+function dkRenderFood(){
+  const dk = state.darkKnight;
+  const kcal = dayKcalTotal(today);
+  const { lo, hi } = dkBand();
+  const scale = Math.round(hi * 1.2);
+
+  dkEl('dkFoodValue').textContent = `${kcal} / ${dk.kcalTarget} kcal`;
+  const bar = dkEl('dkFoodBar');
+  bar.style.width = Math.min(100, (kcal / scale) * 100) + '%';
+  bar.classList.toggle('ok', kcal >= lo && kcal <= hi);
+  bar.classList.toggle('over', kcal > hi);
+
+  const band = dkEl('dkFoodBand');
+  band.style.left = (lo / scale * 100) + '%';
+  band.style.width = ((hi - lo) / scale * 100) + '%';
+
+  let sub = `Rango válido del día: ${lo}–${hi} kcal`;
+  if(kcal < lo) sub += ` · faltan ${lo - kcal}`;
+  else if(kcal > hi) sub += ` · te pasas ${kcal - hi}`;
+  else sub += ' · en rango ✔';
+  dkEl('dkFoodSub').textContent = sub;
+}
+
+function dkRenderStatus(){
+  const dk = state.darkKnight;
+  const el = dkEl('dkStatusLine');
+  const need = dk.minExerciseMin || DK_MIN_EXERCISE_MIN;
+  const live = dk.timerStart ? Math.floor((Date.now() - dk.timerStart) / 60000) : 0;
+  const exShown = (today.exerciseMin || 0) + live;
+  const exOk = (today.exerciseMin || 0) >= need; // solo cuenta lo ya guardado
+  const kcal = dayKcalTotal(today);
+  const { lo, hi } = dkBand();
+
+  el.className = 'dk-status';
+  if(exOk && kcal >= lo && kcal <= hi){
+    el.classList.add('ok');
+    el.textContent = '✔ DÍA CUMPLIDO';
+    return;
+  }
+  const parts = [];
+  let warn = false;
+  if(!exOk){
+    if(dk.timerStart && exShown >= need) parts.push('termina la sesión para registrar el ejercicio');
+    else parts.push(`${Math.max(0, need - exShown)} min de ejercicio`);
+  }
+  if(kcal < lo) parts.push(`${lo - kcal} kcal por registrar`);
+  if(kcal > hi){ warn = true; parts.push(`te pasas ${kcal - hi} kcal del límite (revisa lo registrado)`); }
+  if(warn) el.classList.add('warn');
+  el.textContent = (warn ? '⚠ ' : 'FALTA: ') + parts.join(' · ');
+}
+
+function dkRenderMeals(){
+  const box = dkEl('dkMeals');
+  box.innerHTML = '';
+  let count = 0;
+  MEAL_SLOTS.forEach(slot => {
+    ((today.mealLog && today.mealLog[slot]) || []).forEach(entry => {
+      count++;
+      const row = document.createElement('div');
+      row.className = 'dk-meal';
+      const tag = document.createElement('span');
+      tag.className = 'dk-meal-slot';
+      tag.textContent = slot;
+      const name = document.createElement('span');
+      name.className = 'dk-meal-name';
+      name.textContent = entry.name;
+      const kcal = document.createElement('span');
+      kcal.className = 'dk-meal-kcal';
+      kcal.textContent = entry.kcal ? `${entry.kcal} kcal` : '—';
+      const x = document.createElement('button');
+      x.className = 'dk-meal-x';
+      x.textContent = '×';
+      x.addEventListener('click', () => dkRemoveMeal(slot, entry));
+      row.append(tag, name, kcal, x);
+      box.appendChild(row);
+    });
+  });
+  if(!count){
+    const p = document.createElement('p');
+    p.className = 'dk-empty';
+    p.textContent = 'Aún no has registrado comida hoy.';
+    box.appendChild(p);
+  }
+}
+
+// Panel de logros: cada día cumplido es un bloque marcado; los días se
+// agrupan por semanas y una semana completa se ilumina.
+function dkRenderGrid(stats){
+  const grid = dkEl('dkGrid');
+  grid.innerHTML = '';
+  dkEl('dkAchievements').hidden = !stats.started;
+  if(!stats.started) return;
+
+  const achieved = stats.achieved;
+  const lastIdx = stats.broken ? achieved + 1 : stats.dayNumber;
+  const weeks = Math.max(1, Math.ceil(lastIdx / 7));
+
+  for(let w = 0; w < weeks; w++){
+    const week = document.createElement('div');
+    week.className = 'dk-week';
+    const label = document.createElement('div');
+    label.className = 'dk-week-label';
+    const row = document.createElement('div');
+    row.className = 'dk-week-row';
+    let weekDone = 0;
+
+    for(let i = 1; i <= 7; i++){
+      const idx = w * 7 + i;
+      const tile = document.createElement('div');
+      tile.className = 'dk-tile';
+      const n = document.createElement('span');
+      n.className = 'dk-tile-n';
+      n.textContent = idx;
+      tile.appendChild(n);
+
+      let kind = 'future';
+      if(idx <= achieved){ kind = 'done'; weekDone++; }
+      else if(!stats.broken && idx === stats.dayNumber){ kind = 'today'; }
+      else if(stats.broken && idx === achieved + 1){ kind = 'failed'; }
+      tile.classList.add(kind);
+
+      if(kind === 'done' || kind === 'failed'){
+        const ic = document.createElement('span');
+        ic.className = 'dk-tile-ic';
+        ic.innerHTML = kind === 'done' ? DK_CHECK_SVG : DK_X_SVG;
+        tile.appendChild(ic);
+      }
+      row.appendChild(tile);
+    }
+
+    const left = document.createElement('span');
+    left.textContent = `SEMANA ${w + 1}`;
+    const right = document.createElement('span');
+    right.textContent = weekDone === 7 ? '✔ COMPLETADA' : `${weekDone}/7`;
+    label.append(left, right);
+    if(weekDone === 7) label.classList.add('done');
+
+    week.append(label, row);
+    grid.appendChild(week);
+  }
+}
+
+// Refresco ligero cada segundo (solo si hay una sesión de ejercicio en marcha)
+function dkTick(){
+  if(!isDarkKnightActive()) return;
+  const dk = state.darkKnight;
+  if(!dk.timerStart || dk.brokenAt || !dk.startDate || dk.startDate > todayKey()) return;
+  dkRenderExercise();
+  dkRenderStatus();
+}
+
+/* ---------------- ACCIONES ---------------- */
+
+function dkToggleTimer(){
+  const dk = state.darkKnight;
+  if(dk.timerStart){
+    const mins = Math.floor((Date.now() - dk.timerStart) / 60000);
+    dk.timerStart = null;
+    if(mins > 0) today.exerciseMin = (today.exerciseMin || 0) + mins;
+    saveData(state);
+    renderDarkKnight();
+    if(mins < 1){
+      showModal({
+        title: 'Sesión demasiado corta',
+        message: 'Menos de 1 minuto: no se ha sumado nada. Vuelve a iniciar cuando vayas a entrenar de verdad.',
+        hideCancel: true, confirmText: 'ENTENDIDO'
+      });
+    }
+    return;
+  }
+  dk.timerStart = Date.now();
+  saveData(state);
+  renderDarkKnight();
+}
+
+async function dkAddMinutes(){
+  const raw = await showModal({
+    title: 'Añadir minutos',
+    message: 'Minutos de ejercicio hechos hoy fuera del temporizador.',
+    input: true,
+    placeholder: 'Ej. 25',
+    confirmText: 'AÑADIR'
+  });
+  if(!raw) return;
+  const mins = parseInt(raw, 10);
+  if(!(mins > 0) || mins > 300){
+    await showModal({
+      title: 'Cantidad no válida',
+      message: 'Escribe un número de minutos entre 1 y 300.',
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+    return;
+  }
+  today.exerciseMin = (today.exerciseMin || 0) + mins;
+  renderDarkKnight();
+  showUndoToast(
+    `+${mins} min añadidos`,
+    () => { today.exerciseMin = Math.max(0, (today.exerciseMin || 0) - mins); renderDarkKnight(); },
+    () => { saveData(state); }
+  );
+}
+
+async function dkAddFood(){
+  const hasPacks = state.mealPacks && state.mealPacks.length > 0;
+  const options = MEAL_SLOTS.map(s => ({ label: s, value: 'slot:' + s }));
+  if(hasPacks) options.push({ label: 'Usar un pack guardado', value: 'pack' });
+  const choice = await showModal({ title: '¿Qué comida registras?', list: options });
+  if(!choice) return;
+
+  if(choice === 'pack'){
+    const packId = await showModal({
+      title: 'Elige un pack',
+      list: state.mealPacks.map(p => ({ label: p.name, value: p.id }))
+    });
+    if(!packId) return;
+    const pack = state.mealPacks.find(p => p.id === packId);
+    if(pack) await addPackToSlot(pack);
+    return;
+  }
+  await addMealEntry(choice.replace('slot:', ''));
+}
+
+function dkRemoveMeal(slot, entry){
+  const arr = today.mealLog[slot];
+  const idx = arr.findIndex(e => e.id === entry.id);
+  if(idx === -1) return;
+  arr.splice(idx, 1);
+  const refresh = () => { renderMealSlots(); updateKcalSummary(); updateDietStatusTheme(); renderMonthCalendar(); };
+  refresh();
+  showUndoToast(
+    `"${entry.name}" eliminado`,
+    () => { arr.splice(idx, 0, entry); refresh(); },
+    () => { saveData(state); }
+  );
+}
+
+function dkRulesText(target){
+  const lo = Math.round(target * (1 - DK_KCAL_TOLERANCE));
+  const hi = Math.round(target * (1 + DK_KCAL_TOLERANCE));
+  return [
+    'Rutina militar de hiperenfoque. Cada día debes cumplir DOS cosas:',
+    `• Mínimo ${DK_MIN_EXERCISE_MIN} min de ejercicio`,
+    `• Comida registrada y ${target} kcal (rango ${lo}–${hi})`,
+    '',
+    'Un solo día fallido termina el Arc y el contador vuelve a 0. Sin excusas.',
+    '',
+    'Se oculta todo lo que distrae. Tus datos nunca se borran y puedes salir del modo cuando quieras.'
+  ].join('\n');
+}
+
+async function dkChooseStart(){
+  return showModal({
+    title: '¿Cuándo empieza el Día 1?',
+    list: [
+      { label: 'Empezar HOY', value: 'today' },
+      { label: 'Empezar MAÑANA', value: 'tomorrow' }
+    ]
+  });
+}
+
+async function startDarkKnightFlow(){
+  const dk = state.darkKnight;
+  if(dk.enabled){
+    closeSheet('profileOverlay');
+    renderDarkKnight();
+    return;
+  }
+  let target = dk.kcalTarget || DK_DEFAULT_KCAL;
+
+  while(true){
+    const choice = await showModal({
+      title: 'Caballero Oscuro',
+      message: dkRulesText(target),
+      list: [
+        { label: 'Empezar HOY', value: 'today' },
+        { label: 'Empezar MAÑANA', value: 'tomorrow' },
+        { label: `Cambiar objetivo de kcal (${target})`, value: 'kcal' }
+      ]
+    });
+    if(!choice) return;
+
+    if(choice === 'kcal'){
+      const fields = await showModal({
+        title: 'Objetivo diario de kcal',
+        message: `Entre ${DK_MIN_KCAL_TARGET} y ${DK_MAX_KCAL_TARGET}. El modo no permite menos de ${DK_MIN_KCAL_TARGET} kcal.`,
+        fields: [{ key:'kcal', label:'Kcal por día', type:'number', inputmode:'numeric', value:String(target) }],
+        confirmText: 'GUARDAR'
+      });
+      if(!fields) continue;
+      const v = parseInt(fields.kcal, 10);
+      if(!(v >= DK_MIN_KCAL_TARGET && v <= DK_MAX_KCAL_TARGET)){
+        await showModal({
+          title: 'Objetivo no válido',
+          message: `Debe estar entre ${DK_MIN_KCAL_TARGET} y ${DK_MAX_KCAL_TARGET} kcal.`,
+          hideCancel: true, confirmText: 'ENTENDIDO'
+        });
+        continue;
+      }
+      target = v;
+      continue;
+    }
+
+    dk.enabled = true;
+    dk.startDate = choice === 'tomorrow' ? dkTomorrowKey() : todayKey();
+    dk.kcalTarget = target;
+    dk.minExerciseMin = DK_MIN_EXERCISE_MIN;
+    dk.timerStart = null;
+    dk.brokenAt = null;
+    dk.brokenInfo = null;
+    saveData(state);
+    closeSheet('profileOverlay');
+    closeSheet('socialOverlay');
+    renderDarkKnight();
+    return;
+  }
+}
+
+async function dkRestart(){
+  const choice = await dkChooseStart();
+  if(!choice) return;
+  const dk = state.darkKnight;
+  dk.startDate = choice === 'tomorrow' ? dkTomorrowKey() : todayKey();
+  dk.brokenAt = null;
+  dk.brokenInfo = null;
+  dk.timerStart = null;
+  saveData(state);
+  renderDarkKnight();
+}
+
+function dkStartNow(){
+  const dk = state.darkKnight;
+  dk.startDate = todayKey();
+  saveData(state);
+  renderDarkKnight();
+}
+
+async function dkExit(){
+  const stats = dkRunStats();
+  const days = stats.started ? stats.achieved : 0;
+  const ok = await showModal({
+    title: 'Salir del Caballero Oscuro',
+    message: `Se termina el Arc actual (${days} día${days === 1 ? '' : 's'} logrados). Tus datos no se borran y podrás volver a activarlo cuando quieras.`,
+    confirmText: 'SALIR',
+    danger: true
+  });
+  if(!ok) return;
+  const dk = state.darkKnight;
+  if(stats.started){
+    dk.bestRun = Math.max(dk.bestRun || 0, stats.achieved);
+    if(!dk.brokenAt) dk.runs.push({ start: dk.startDate, endedByUser: todayKey(), days: stats.achieved });
+  }
+  dk.enabled = false;
+  dk.startDate = null;
+  dk.brokenAt = null;
+  dk.brokenInfo = null;
+  dk.timerStart = null;
+  saveData(state);
+  renderDarkKnight();
+  renderAll();
+}
+
+async function dkOpenMenu(){
+  const choice = await showModal({
+    title: 'Caballero Oscuro',
+    list: [
+      { label: 'Ver reglas del Arc', value: 'rules' },
+      { label: 'Salir del modo', value: 'exit' }
+    ]
+  });
+  if(choice === 'rules'){
+    await showModal({
+      title: 'Reglas del Arc',
+      message: dkRulesText(state.darkKnight.kcalTarget || DK_DEFAULT_KCAL),
+      hideCancel: true, confirmText: 'ENTENDIDO'
+    });
+  } else if(choice === 'exit'){
+    await dkExit();
+  }
+}
+
+function setupDarkKnight(){
+  dkEl('dkActivateBtn').addEventListener('click', startDarkKnightFlow);
+  dkEl('dkTimerBtn').addEventListener('click', dkToggleTimer);
+  dkEl('dkAddMinBtn').addEventListener('click', dkAddMinutes);
+  dkEl('dkAddFoodBtn').addEventListener('click', dkAddFood);
+  dkEl('dkGearBtn').addEventListener('click', dkOpenMenu);
+  dkEl('dkRestartBtn').addEventListener('click', dkRestart);
+  dkEl('dkBrokenExitBtn').addEventListener('click', dkExit);
+  dkEl('dkStartNowBtn').addEventListener('click', dkStartNow);
+}
+
+
 /* ---------------- COPIA DE SEGURIDAD (EXPORTAR / IMPORTAR) ---------------- */
 
 function setupBackup(){
@@ -3253,6 +3931,7 @@ function renderAll(){
   updateDayCounter();
   updateStreak();
   updateWeekly();
+  renderDarkKnight();
 }
 
 setupModalSystem();
@@ -3263,6 +3942,7 @@ setupHiddenReset();
 setupSwipe();
 setupHotBar();
 setupProfileSheet();
+setupDarkKnight();
 setupWorkoutSession();
 setupBackup();
 setupMonthCalendar();
@@ -3278,10 +3958,14 @@ setTimeout(runOnboarding, 800);
 const THEME_KEY = 'wayneProtocolTheme';
 
 function applyTheme(theme){
-  document.body.classList.toggle('theme-batgirl', theme === 'batgirl');
-  document.body.classList.toggle('theme-ymir', theme === 'ymir');
-  document.body.classList.toggle('theme-spidey', theme === 'spidey');
-  document.body.classList.toggle('theme-nocturne', theme === 'nocturne');
+  // En modo Caballero Oscuro manda el tema Winter Arc, sea cual sea el tema
+  // oculto que hubiera guardado el usuario (que se recupera al salir del modo).
+  const dk = isDarkKnightActive();
+  document.body.classList.toggle('theme-winter', dk);
+  document.body.classList.toggle('theme-batgirl', !dk && theme === 'batgirl');
+  document.body.classList.toggle('theme-ymir', !dk && theme === 'ymir');
+  document.body.classList.toggle('theme-spidey', !dk && theme === 'spidey');
+  document.body.classList.toggle('theme-nocturne', !dk && theme === 'nocturne');
 }
 
 (function initTheme(){

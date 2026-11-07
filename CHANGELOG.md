@@ -1,6 +1,6 @@
 # CHANGELOG — Wayne Protocol
 
-Historial reconstruido a partir de las notas de cada versión entregadas durante el desarrollo (no hay un repositorio Git detrás, así que este documento hace de historial). Va de la v1.0 a la v2.1, que es la base sobre la que se sigue construyendo ahora.
+Historial reconstruido a partir de las notas de cada versión entregadas durante el desarrollo (no hay un repositorio Git detrás, así que este documento hace de historial). Va de la v1.0 a la v2.3.
 
 ---
 
@@ -67,6 +67,14 @@ Versión ambiciosa: API de alimentos con packs de comida, sistema de permisos co
 
 ## v2.1 — Backup estable (base actual)
 Versión saneada tras el incidente anterior: Bottom Hot Bar con iconos SVG propios y orden corregido (Dietas a la izquierda, coherente con la dirección del swipe), racha dorada al 70% en vez de 85%, Motivación Personal y Copia de Seguridad trasladadas a Perfil (con nuevo resumen a largo plazo), y la gran pieza de esta versión: **sesión de entrenamiento real** con series, peso, repeticiones y tick de finalizado, más **rutinas (packs de entrenamiento)** igual que los packs de comida. Tema Batgirl rediseñado también sobre la mecánica de Ymir (pastel, con el mismo pulido fluido).
+
+## v2.2 — Temas, guía de ejercicio y Google
+- Tema oculto **Spidey** con tipografía Anton (más legible) y tema **Nocturne** convertido a versión clara.
+- **Guía visual del ejercicio** vía wger.de al abrir la sesión de un ejercicio.
+- Vinculación con Google (Google Identity Services) preparada; corregida la comprobación del Client ID que impedía activarla.
+
+## v2.3 — Caballero Oscuro (Winter Arc)
+Nuevo modo de hiperenfoque activable desde Perfil: rutina militar con mínimo 20 min de ejercicio y comida en rango (1600 kcal ±10%) cada día; un día fallido reinicia el Arc (sin borrar datos). Tema Winter Arc, interfaz reducida a ejercicio y dieta, panel de logros por días y semanas, gamificación mínima. Ver `README.md`.
 
 ---
 

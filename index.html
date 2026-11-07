@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05080a">
-<title>WAYNE PROTOCOL v2.2</title>
+<title>WAYNE PROTOCOL v2.3</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -410,6 +410,85 @@
   </button>
 </nav>
 
+<!-- CABALLERO OSCURO (modo hiperenfoque / Winter Arc) -->
+<div class="dk-screen" id="dkScreen" hidden>
+  <div class="dk-inner">
+
+    <header class="dk-top">
+      <div class="dk-brand">
+        <span class="dk-brand-main">CABALLERO OSCURO</span>
+        <span class="dk-brand-sub">WINTER ARC</span>
+      </div>
+      <button class="dk-gear" id="dkGearBtn" aria-label="Opciones del modo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+      </button>
+    </header>
+
+    <div class="dk-hero" id="dkHero">
+      <div class="dk-hero-label" id="dkHeroLabel">DÍA</div>
+      <div class="dk-hero-number" id="dkHeroNumber">1</div>
+      <div class="dk-hero-sub" id="dkHeroSub"></div>
+    </div>
+
+    <p class="dk-quote" id="dkQuote"></p>
+
+    <section id="dkTodaySection">
+      <div class="dk-req">
+        <div class="dk-req-head">
+          <span class="dk-req-name">EJERCICIO</span>
+          <span class="dk-req-value" id="dkExValue">0 / 20 min</span>
+        </div>
+        <div class="dk-bar"><div class="dk-bar-fill" id="dkExBar"></div></div>
+        <div class="dk-req-actions">
+          <button class="dk-btn dk-btn-primary" id="dkTimerBtn">▶ INICIAR SESIÓN</button>
+          <button class="dk-btn" id="dkAddMinBtn">+ MINUTOS</button>
+        </div>
+      </div>
+
+      <div class="dk-req">
+        <div class="dk-req-head">
+          <span class="dk-req-name">DIETA</span>
+          <span class="dk-req-value" id="dkFoodValue">0 / 1600 kcal</span>
+        </div>
+        <div class="dk-bar dk-bar-band">
+          <div class="dk-bar-fill" id="dkFoodBar"></div>
+          <div class="dk-band" id="dkFoodBand"></div>
+        </div>
+        <div class="dk-req-sub" id="dkFoodSub"></div>
+        <div class="dk-req-actions">
+          <button class="dk-btn dk-btn-primary" id="dkAddFoodBtn">+ AÑADIR COMIDA</button>
+        </div>
+      </div>
+
+      <div class="dk-status" id="dkStatusLine"></div>
+    </section>
+
+    <section class="dk-meals-section" id="dkMealsSection">
+      <h3 class="dk-section-title">COMIDA DE HOY</h3>
+      <div class="dk-meals" id="dkMeals"></div>
+    </section>
+
+    <section class="dk-pre" id="dkPreNote" hidden>
+      <p class="dk-pre-text" id="dkPreNoteText"></p>
+      <button class="dk-btn" id="dkStartNowBtn">EMPEZAR HOY</button>
+    </section>
+
+    <section class="dk-broken" id="dkBrokenCard" hidden>
+      <div class="dk-broken-title">ARC ROTO</div>
+      <p class="dk-broken-text" id="dkBrokenText"></p>
+      <button class="dk-btn dk-btn-primary" id="dkRestartBtn">REINICIAR EL ARC</button>
+      <button class="dk-btn" id="dkBrokenExitBtn">SALIR DEL MODO</button>
+    </section>
+
+    <section class="dk-achievements" id="dkAchievements" hidden>
+      <h3 class="dk-section-title">LOGROS</h3>
+      <div class="dk-grid" id="dkGrid"></div>
+    </section>
+
+    <footer class="dk-foot" id="dkBest">Mejor marca: 0 días</footer>
+  </div>
+</div>
+
 <!-- PANTALLA DE PERFIL (invitado) -->
 <div class="sheet-overlay" id="profileOverlay" hidden>
   <div class="sheet-card sheet-card-tall">
@@ -453,6 +532,11 @@
     <input type="file" id="pinFileInput" accept="image/*" hidden>
 
     <!-- AJUSTES -->
+    <div class="profile-divider"><span>🦇 CABALLERO OSCURO</span></div>
+    <p class="hint">Modo hiperenfoque estilo "Winter Arc": tema nuevo, sin distracciones, solo ejercicio y dieta. Mínimo 20 min de ejercicio y comida registrada cada día. Un día fallido y el Arc se reinicia. Puedes salir cuando quieras y tus datos nunca se borran.</p>
+    <button class="btn-ghost full dk-activate-btn" id="dkActivateBtn">ACTIVAR CABALLERO OSCURO</button>
+    <p class="hint" id="dkProfileStatus">Modo inactivo.</p>
+
     <div class="profile-divider"><span>⚙️ AJUSTES</span></div>
     <div class="backup-row">
       <span class="backup-label">COPIA DE SEGURIDAD LOCAL</span>

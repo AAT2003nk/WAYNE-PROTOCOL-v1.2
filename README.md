@@ -1,4 +1,4 @@
-# WAYNE PROTOCOL v2.2
+# WAYNE PROTOCOL v2.3 — "Caballero Oscuro"
 
 Bat-terminal personal: hábitos diarios, entrenamiento con series/peso/reps y rutinas, dieta con macros y packs, bitácora, perfil de invitado con resumen a largo plazo — todo local, sin servidor, sin cuentas reales (todavía).
 
@@ -20,6 +20,26 @@ Bat-terminal personal: hábitos diarios, entrenamiento con series/peso/reps y ru
 ---
 
 ## Qué hay en v2.0
+
+## 🦇 Modo Caballero Oscuro (Winter Arc)
+
+Modo de hiperenfoque, pensado para una rutina militar sin excusas. Se activa desde **Perfil → Caballero Oscuro**.
+
+**Las reglas** — cada día hay que cumplir DOS cosas:
+- **Mínimo 20 min de ejercicio** (temporizador de sesión, o minutos añadidos a mano).
+- **Comida registrada y kcal dentro del rango del objetivo**: 1600 kcal por defecto, con un margen de ±10% (1440–1760). Se puede cambiar el objetivo al activar el modo (mínimo 1400 kcal: el modo no permite menos).
+
+**Un solo día fallido termina el Arc** y el contador vuelve a 0. Se evalúa cada día pasado al abrir la app o al cambiar de día; el día de hoy nunca se da por perdido hasta que acaba (así se puede corregir un registro equivocado). Romper el Arc **no borra ningún dato**: solo reinicia el contador, y se puede empezar de nuevo hoy o mañana.
+
+**Qué cambia:**
+- Tema **Winter Arc** (negro-azulado, hielo y blanco escarcha) que sustituye a cualquier otro; al salir del modo se recupera el tema que tenías.
+- Desaparece todo lo que distrae: social, fotos, temas ocultos, bitácora, barra inferior y gamificación extra (sin celebraciones, insignias ni récords).
+- Una sola pantalla: número de día enorme, las dos tarjetas del día (ejercicio y dieta), la comida de hoy y el **panel de logros**: cada día cumplido es un bloque marcado, agrupados por semanas, y una semana completa se ilumina.
+- Gamificación mínima: solo el contador de días, los bloques de logro y la mejor marca.
+
+**Salir:** engranaje de la pantalla → "Salir del modo" (siempre disponible, sin penalización; tus datos no se tocan).
+
+**Límites a propósito:** el modo mide el ejercicio en minutos, no en series/peso (eso sigue en la app completa, fuera del modo). El temporizador, si se olvida parado al cambiar de día, se acredita al día en que se inició con un tope de 120 min.
 
 ### 🏋️ Entrenamiento (a fondo esta vez)
 - **Sesión de entrenamiento real**: botón ▶ en cada ejercicio abre un registro de series con peso (kg), repeticiones y un tick para marcar cada serie como hecha. El contador rápido de la fila se recalcula solo a partir de las series marcadas, así no hay dos sistemas peleándose entre sí.
